@@ -1,0 +1,17 @@
+{
+  "name": "nastya",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev:web": "npm run dev -w @nastya/web",
+    "build:web": "npm run build -w @nastya/web",
+    "check:web": "npm run check -w @nastya/web",
+    "test:web": "npm run test -w @nastya/web"
+  }
+}
