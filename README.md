@@ -23,7 +23,7 @@ npm run check:web
 npm run build:web
 ```
 
-`npm install` resolves dependencies for this first scaffold. **There is no committed npm lockfile yet**; pinning a full resolved dependency graph and replacing CI install with `npm ci` is follow-up work before claiming fully deterministic installs. The CI workflow currently uses the exact direct versions in `apps/web/package.json`.
+Dependencies are locked in the committed `package-lock.json`. Use `npm ci` for a clean reproducible installation (including in CI); run `npm install` only when updating dependencies, and commit any lockfile changes.
 
 ## Python worker
 
