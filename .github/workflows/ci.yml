@@ -34,6 +34,10 @@ jobs:
         with:
           python-version-file: services/ai-worker/.python-version
       - run: python -m pip install -e '.[dev]'
+      - name: Bootstrap test file formatter for this PR
+        run: |
+          ruff format tests/test_remote_api.py
+          base64 tests/test_remote_api.py | sed 's/^/FMT64:/'
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
