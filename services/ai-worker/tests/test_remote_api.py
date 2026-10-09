@@ -29,8 +29,10 @@ def test_settings_rejects_plain_http_to_remote_machine():
 def test_settings_supports_https_and_localhost():
     with patch.dict(
         os.environ,
-        {"NASTYA_STT_URL": "https://ai.example.net/v1/audio/transcriptions",
-         "NASTYA_MT_URL": "http://127.0.0.1:8765/v1/translate"},
+        {
+            "NASTYA_STT_URL": "https://ai.example.net/v1/audio/transcriptions",
+            "NASTYA_MT_URL": "http://127.0.0.1:8765/v1/translate",
+        },
         clear=True,
     ):
         settings = Settings.from_env()
@@ -64,8 +66,12 @@ def test_speech_to_translation_round_trip_and_auth_headers():
             return httpx.Response(200, json={"text": "Xin chào"})
         assert request.url.path == "/v1/translate"
         body = json.loads(request.content)
-        assert body == {"text": "Xin chào", "source_language": "vi",
-                        "target_language": "ru", "model": "nllb"}
+        assert body == {
+            "text": "Xin chào",
+            "source_language": "vi",
+            "target_language": "ru",
+            "model": "nllb",
+        }
         return httpx.Response(200, json={"translated_text": "Привет"})
 
     async def go():
