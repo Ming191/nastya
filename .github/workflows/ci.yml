@@ -20,6 +20,8 @@ jobs:
       # NAS-2 initial bootstrap: once a lockfile is generated and committed,
       # replace npm install with npm ci + npm cache in this job.
       - run: npm install --no-audit --no-fund
+      - name: Emit generated npm lockfile in CI logs (one-time bootstrap)
+        run: base64 package-lock.json | sed 's/^/LOCK64:/'
       - run: npm run check:web
       - run: npm run build:web
 
