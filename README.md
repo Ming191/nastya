@@ -1,29 +1,31 @@
 # Nastya
 
-Private 1:1 Vietnamese ↔ Russian call translation. **NAS-2 is a development scaffold, not a working video call.** LiveKit room auth and media join arrive in NAS-4/NAS-5; audio AI integration and translated captions arrive in later tickets.
+Nastya is a private Vietnamese ↔ Russian video-call translation application, with separate web and AI-worker components.
 
-## Prerequisites
+## Requirements
 
-- Node.js **22** and npm (see `.nvmrc`).
-- Python **3.12** and pip (or a compatible Python 3.12 virtual environment).
-- No GPU, LiveKit account, database, or secrets are needed to run this scaffold.
+- Node.js 22 and npm
+- Python 3.12
+- LiveKit credentials when configuring live calls
+- Remote STT/translation endpoints when using AI inference
 
-## Web app
+## Web
+
+From the repository root:
 
 ```bash
-npm install
+npm ci
 npm run dev:web
-# Visit http://localhost:3000 and http://localhost:3000/api/health
 ```
 
-Check frontend locally:
+Open http://localhost:3000. Health endpoint: http://localhost:3000/api/health.
+
+Checks:
 
 ```bash
 npm run check:web
 npm run build:web
 ```
-
-Dependencies are locked in the committed `package-lock.json`. Use `npm ci` for a clean reproducible installation (including in CI); run `npm install` only when updating dependencies, and commit any lockfile changes.
 
 ## Python worker
 
@@ -33,10 +35,12 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 python -m nastya_worker --health
-python -m nastya_worker  # starts an idle process; Ctrl+C to stop
+python -m nastya_worker
 ```
 
-On Windows PowerShell activate with `.venv\\Scripts\\Activate.ps1` instead. Worker checks:
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` instead of `source`.
+
+Run the worker checks from `services/ai-worker`:
 
 ```bash
 ruff check .
@@ -44,55 +48,44 @@ ruff format --check .
 pytest -q
 ```
 
-The worker deliberately **does not** join a LiveKit room, load AI models, or consume GPU in NAS-2. Its health output is honest: `rtcReady=false`, `modelsReady=false`.
+## Remote model APIs
 
-## Required configuration for future integration
+Configure these variables **in the Python worker environment**, not in the browser:
 
-- [`apps/web/.env.example`](apps/web/.env.example): `NEXT_PUBLIC_LIVEKIT_URL` is public; `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` are **server only**.
-- [`services/ai-worker/.env.example`](services/ai-worker/.env.example): worker-side LiveKit URL and server secrets plus `NASTYA_LOG_LEVEL`.
-- No env file is required for this scaffold. Copy example files when wiring NAS-4/NAS-11, and configure secrets through deployment environment. The Python worker **does not auto-load `.env` files**; export environment variables explicitly when needed.
-- `.gitignore` excludes real env files, models, weights, personal audio, transcripts, recordings and local caches. Do not commit credentials or personal conversations.
+```dotenv
+NASTYA_STT_URL=https://your-server.example/v1/audio/transcriptions
+NASTYA_MT_URL=https://your-server.example/v1/translate
+NASTYA_STT_API_KEY=your-stt-key
+NASTYA_MT_API_KEY=your-mt-key
+NASTYA_STT_MODEL=whisper
+NASTYA_MT_MODEL=nllb
+NASTYA_HTTP_TIMEOUT_SECONDS=20
+```
 
-## Repository layout
+The STT endpoint accepts a multipart request with `file` (WAV), `model`, `language` and `response_format=json`, returning `{"text":"..."}`. The translation endpoint accepts JSON with `text`, `source_language`, `target_language` and an optional `model`, returning `{"translated_text":"..."}`. The translation endpoint is a Nastya-specific contract and may require an adapter in front of your model server.
 
-- `apps/web`: Next.js 16 App Router, TypeScript and health endpoint.
-- `services/ai-worker`: minimal Python package with CLI, config and tests.
-- `.github/workflows/ci.yml`: independent web and worker checks for pull requests and main.
-
-Architecture contracts and ADRs are maintained **only in Linear**: [NAS-1](https://linear.app/cmms-warehouse/issue/NAS-1). Next ticket: [NAS-3](https://linear.app/cmms-warehouse/issue/NAS-3) feasibility, then [NAS-4](https://linear.app/cmms-warehouse/issue/NAS-4) room auth.
-
-## Remote model API interfaces (NAS-3)
-
-No Kaggle, model weights or GPU are required to run the provider interfaces. Future LiveKit code calls external STT and MT via `services/ai-worker/src/nastya_worker/providers/`.
-
-Start the development-only mock server:
+Probe the endpoints without connecting to a room:
 
 ```bash
-cd services/ai-worker
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
+python -m nastya_worker --probe-translation "Xin chào" --source vi --target ru
+python -m nastya_worker --probe-translation "Привет" --source ru --target vi
+python -m nastya_worker --probe-stt /path/to/speech.wav --source vi
+```
+
+For local development without a model server, start the **mock** API:
+
+```bash
 python -m nastya_worker.mock_api
 ```
 
-In another terminal (same virtual environment):
+Then configure `NASTYA_STT_URL=http://127.0.0.1:8765/v1/audio/transcriptions` and `NASTYA_MT_URL=http://127.0.0.1:8765/v1/translate` in another terminal. Mock responses are not real recognition or translation.
 
-```bash
-export NASTYA_STT_URL=http://127.0.0.1:8765/v1/audio/transcriptions
-export NASTYA_MT_URL=http://127.0.0.1:8765/v1/translate
-python -m nastya_worker --probe-translation 'Xin chào' --source vi --target ru
-python -m nastya_worker --probe-translation 'Привет' --source ru --target vi
-python -m nastya_worker --health
-```
+See `apps/web/.env.example` and `services/ai-worker/.env.example` for other configuration keys. The worker reads process environment variables directly; it does not automatically load `.env` files. Keep credentials out of Git.
 
-To use real model APIs later, replace the URLs with HTTPS endpoints and optionally set `NASTYA_STT_API_KEY`, `NASTYA_MT_API_KEY`, `NASTYA_STT_MODEL`, and `NASTYA_MT_MODEL` in the **worker environment**. Each endpoint can be probed independently. `--probe-stt path/to/file.wav --source ru` uploads WAV bytes; audio resampling/codec validation will be handled by the future RTC adapter.
+## Project structure
 
-HTTP contracts:
+- `apps/web/` — Next.js web application and server routes
+- `services/ai-worker/` — Python worker and remote inference adapters
+- `.github/workflows/ci.yml` — automated checks
 
-- **STT**: `POST /v1/audio/transcriptions` multipart fields `file` (speech.wav), `model`, `language` (`vi` or `ru`), `response_format=json`; response `{"text":"recognized words"}`.
-- **MT**: `POST /v1/translate` JSON fields `text`, `source_language`, `target_language`, optional `model`; response `{"translated_text":"..."}`.
-- Both routes optionally use `Authorization: Bearer <token>`. Internet-facing endpoints must use HTTPS, while HTTP is allowed on loopback only.
-
-These are **Nastya-defined contracts**. A future self-hosted model server may need a lightweight wrapper to expose these exact routes. The mock returns visibly fake output, not real inference.
-
-No WebRTC audio integration is implemented yet (`rtcReady=false`, `modelsReady=false`). Real Vietnam–Russia RTC/TURN testing requires LiveKit credentials and two real clients, tracked in [NAS-3](https://linear.app/cmms-warehouse/issue/NAS-3) and [NAS-7](https://linear.app/cmms-warehouse/issue/NAS-7). Architectural records remain exclusively in Linear.
+Planning, architecture decisions and development records are maintained in [Linear](https://linear.app/cmms-warehouse/team/NAS/overview).
