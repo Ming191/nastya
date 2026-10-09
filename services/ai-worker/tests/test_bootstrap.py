@@ -8,12 +8,14 @@ from nastya_worker.config import Settings
 
 
 def test_health_is_explicitly_not_ai_ready() -> None:
-    assert health() == {
-        "service": "ai-worker",
-        "status": "ok",
-        "rtcReady": False,
-        "modelsReady": False,
-    }
+    with patch.dict(os.environ, {}, clear=True):
+        assert health() == {
+            "service": "ai-worker",
+            "status": "ok",
+            "rtcReady": False,
+            "modelsReady": False,
+            "externalApiConfigured": False,
+        }
 
 
 def test_default_log_level() -> None:

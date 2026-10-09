@@ -60,3 +60,39 @@ The worker deliberately **does not** join a LiveKit room, load AI models, or con
 - `.github/workflows/ci.yml`: independent web and worker checks for pull requests and main.
 
 Architecture contracts and ADRs are maintained **only in Linear**: [NAS-1](https://linear.app/cmms-warehouse/issue/NAS-1). Next ticket: [NAS-3](https://linear.app/cmms-warehouse/issue/NAS-3) feasibility, then [NAS-4](https://linear.app/cmms-warehouse/issue/NAS-4) room auth.
+
+## Remote model API interfaces (NAS-3)
+
+No Kaggle, model weights or GPU are required to run the provider interfaces. Future LiveKit code calls external STT and MT via `services/ai-worker/src/nastya_worker/providers/`.
+
+Start the development-only mock server:
+
+```bash
+cd services/ai-worker
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+python -m nastya_worker.mock_api
+```
+
+In another terminal (same virtual environment):
+
+```bash
+export NASTYA_STT_URL=http://127.0.0.1:8765/v1/audio/transcriptions
+export NASTYA_MT_URL=http://127.0.0.1:8765/v1/translate
+python -m nastya_worker --probe-translation 'Xin chào' --source vi --target ru
+python -m nastya_worker --probe-translation 'Привет' --source ru --target vi
+python -m nastya_worker --health
+```
+
+To use real model APIs later, replace the URLs with HTTPS endpoints and optionally set `NASTYA_STT_API_KEY`, `NASTYA_MT_API_KEY`, `NASTYA_STT_MODEL`, and `NASTYA_MT_MODEL` in the **worker environment**. Each endpoint can be probed independently. `--probe-stt path/to/file.wav --source ru` uploads WAV bytes; audio resampling/codec validation will be handled by the future RTC adapter.
+
+HTTP contracts:
+
+- **STT**: `POST /v1/audio/transcriptions` multipart fields `file` (speech.wav), `model`, `language` (`vi` or `ru`), `response_format=json`; response `{"text":"recognized words"}`.
+- **MT**: `POST /v1/translate` JSON fields `text`, `source_language`, `target_language`, optional `model`; response `{"translated_text":"..."}`.
+- Both routes optionally use `Authorization: Bearer <token>`. Internet-facing endpoints must use HTTPS, while HTTP is allowed on loopback only.
+
+These are **Nastya-defined contracts**. A future self-hosted model server may need a lightweight wrapper to expose these exact routes. The mock returns visibly fake output, not real inference.
+
+No WebRTC audio integration is implemented yet (`rtcReady=false`, `modelsReady=false`). Real Vietnam–Russia RTC/TURN testing requires LiveKit credentials and two real clients, tracked in [NAS-3](https://linear.app/cmms-warehouse/issue/NAS-3) and [NAS-7](https://linear.app/cmms-warehouse/issue/NAS-7). Architectural records remain exclusively in Linear.

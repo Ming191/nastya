@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nastya-ai-worker"
-version = "0.0.0"
-description = "Bootstrap worker shell for Nastya RTC translation"
+version = "0.1.0"
+description = "Remote inference provider interfaces for Nastya RTC translation"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["httpx>=0.28.1,<0.29"]
 
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.13.3"]
