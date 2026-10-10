@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, TrackSource } from "livekit-server-sdk";
+import type { SecurityGate } from "./security-gate";
 
 export type Role = "owner" | "guest";
 export type Language = "vi" | "ru";
@@ -101,8 +102,9 @@ export async function createPrivateRoom(admin: RoomAdmin, config: RoomConfig, no
 export async function redeemInvite(
   admin: RoomAdmin,
   config: RoomConfig,
-  request: { roomId: string; invite: string; preferredLanguage: Language },
+  request: { roomId: string; invite: string; preferredLanguage: Language; sessionNonce?: string },
   now = Math.floor(Date.now()/1000),
+  gate?: SecurityGate,
 ) {
   if (request.preferredLanguage !== "ru" && request.preferredLanguage !== "vi") {
     throw new RoomError("INVALID_LANGUAGE", 400);
@@ -122,12 +124,20 @@ export async function redeemInvite(
   if (people.filter((p) => p.identity.startsWith("human:")).length >= 2) {
     throw new RoomError("ROOM_FULL",409);
   }
+  // Atomic first-device-wins reservation prevents two distinct browsers
+  // redeeming the same room/role concurrently across deployment replicas.
+  // A returning tab with the SAME locally retained nonce may refresh its JWT.
+  if (gate) {
+    await gate.claimRole(request.roomId, invitation.role, request.sessionNonce ?? "",
+      invitation.exp - now);
+  }
   const ttl = Math.min(TOKEN_TTL, invitation.exp-now);
   const token = new AccessToken(config.apiKey,config.apiSecret, {
     identity, ttl, attributes:{ role:invitation.role, sourceLanguage:request.preferredLanguage },
   });
   token.addGrant({
     roomJoin:true,room:request.roomId,canPublish:true,canSubscribe:true,
+    canPublishSources:[TrackSource.CAMERA, TrackSource.MICROPHONE],
     canPublishData:false,canUpdateOwnMetadata:false,roomAdmin:false,roomCreate:false,
   });
   return {

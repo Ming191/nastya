@@ -1,4 +1,5 @@
 import { createWindowLimiter, createPrivateRoom, loadRoomConfig, makeRoomAdmin, RoomError } from "../../../lib/rooms";
+import { securityGate } from "../../../lib/security-gate";
 import { requireSameOrigin, roomFailure, roomJson } from "../../../lib/room-http";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ export async function POST(req: Request): Promise<Response> {
     const config = loadRoomConfig();
     requireSameOrigin(req, config.publicOrigin);
     if (!allow()) throw new RoomError("RATE_LIMITED", 429);
+    await securityGate(config).checkBudget("create");
     return roomJson(await createPrivateRoom(makeRoomAdmin(config), config), 201);
   } catch (error) {
     return roomFailure(error);
