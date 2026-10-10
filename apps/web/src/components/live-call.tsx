@@ -44,7 +44,6 @@ function RemoteAudio({ track, volume }: { track?: RemoteAudioTrack; volume: numb
     const audio = ref.current;
     if (!track || !audio) return;
     track.attach(audio);
-    audio.volume = volume;
     // Playback may require an explicit user gesture on mobile/Safari.
     void audio.play().catch(() => {});
     return () => {

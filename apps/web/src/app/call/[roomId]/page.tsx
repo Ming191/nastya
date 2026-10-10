@@ -32,10 +32,9 @@ export default function RoomEntryPage() {
       if (invite.clearFragment) {
         window.history.replaceState(null, "", current.pathname + current.search);
       }
-      setCanShare(!!guestShareUrl(current.origin, roomId, window.sessionStorage));
     } catch {
       // Session storage may be disabled by browser privacy settings.
-      setStatus("Browser session storage is unavailable. Allow session storage for room invitations.");
+      // Joining will show a useful error if session storage is not permitted.
     }
     return () => {
       mounted.current = false;
