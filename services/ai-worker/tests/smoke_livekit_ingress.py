@@ -91,7 +91,7 @@ async def main() -> None:
         )
         # Real RTC jitter/resampling can delay/drop boundary frames. Provide
         # sufficient speech and trailing silence before checking STT delivery.
-        for attempt in range(2):
+        for _ in range(2):
             await asyncio.gather(
                 send_audio(owner_source, 11000, 32),
                 send_audio(guest_source, 12000, 32),
