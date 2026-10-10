@@ -5,6 +5,7 @@ PCM is generated in memory, never saved. No cloud, credentials, or model needed.
 """
 
 import asyncio
+import math
 import time
 from array import array
 from datetime import timedelta
@@ -41,9 +42,17 @@ def token(identity: str, language: str = "") -> str:
 
 
 async def send_audio(source: rtc.AudioSource, amplitude: int, frames: int) -> None:
-    for _ in range(frames):
+    # A constant/DC PCM value gets high-pass-filtered by Opus as near-silence.
+    # Use a 440 Hz AC waveform to test actual remote VAD energy.
+    for step in range(frames):
         frame = rtc.AudioFrame.create(16000, 1, 320)
-        raw = array("h", [amplitude] * 320).tobytes()
+        raw = array(
+            "h",
+            (
+                int(amplitude * math.sin(2 * math.pi * 440 * (step * 320 + i) / 16000))
+                for i in range(320)
+            ),
+        ).tobytes()
         memoryview(frame.data).cast("B")[:] = raw
         await source.capture_frame(frame)
         await asyncio.sleep(0.02)
