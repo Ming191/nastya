@@ -6,6 +6,7 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getMediaError, isHumanIdentity, languageLabel, type ParticipantRole, type SpokenLanguage } from "../lib/call";
+import { disconnectRoomOnce, nextConnection, nextPeerPresence, type CallConnection, type PeerPresence } from "../lib/call-lifecycle";
 
 type DeviceKind = "audioinput" | "videoinput" | "audiooutput";
 type VideoTrack = LocalVideoTrack | RemoteVideoTrack;
@@ -74,7 +75,11 @@ export function LiveCall({
   canShare: boolean;
 }) {
   const [revision, setRevision] = useState(0);
-  const [connection, setConnection] = useState<"connected" | "reconnecting" | "disconnected">("connected");
+  const [connection, setConnection] = useState<CallConnection>("connected");
+  const [peerPresence, setPeerPresence] = useState<PeerPresence>(() =>
+    Array.from(room.remoteParticipants.values()).some((p) => isHumanIdentity(p.identity))
+      ? "present" : "waiting",
+  );
   const [mediaErrors, setMediaErrors] = useState<{ microphone?: string; camera?: string }>({});
   const [action, setAction] = useState<string | null>(null);
   const [outputError, setOutputError] = useState("");
@@ -98,18 +103,34 @@ export function LiveCall({
     const refresh = () => {
       if (active) setRevision((value) => value + 1);
     };
-    const reconnecting = () => { if (active) setConnection("reconnecting"); };
+    const reconnecting = () => {
+      if (active) setConnection((current) => nextConnection(current, "reconnecting"));
+    };
     const reconnected = () => {
       if (active) {
-        setConnection("connected");
+        setConnection((current) => nextConnection(current, "reconnected"));
         refresh();
       }
     };
-    const disconnected = () => { if (active) setConnection("disconnected"); };
+    const disconnected = () => {
+      if (active) setConnection((current) => nextConnection(current, "disconnected"));
+    };
+    const peerJoined = (participant: { identity: string }) => {
+      if (active) {
+        setPeerPresence((current) => nextPeerPresence(current, "joined", participant.identity));
+        refresh();
+      }
+    };
+    const peerLeft = (participant: { identity: string }) => {
+      if (active) {
+        setPeerPresence((current) => nextPeerPresence(current, "left", participant.identity));
+        refresh();
+      }
+    };
     const onDevices = () => { void refreshDevices(); };
 
-    room.on(RoomEvent.ParticipantConnected, refresh);
-    room.on(RoomEvent.ParticipantDisconnected, refresh);
+    room.on(RoomEvent.ParticipantConnected, peerJoined);
+    room.on(RoomEvent.ParticipantDisconnected, peerLeft);
     room.on(RoomEvent.TrackPublished, refresh);
     room.on(RoomEvent.TrackUnpublished, refresh);
     room.on(RoomEvent.TrackSubscribed, refresh);
@@ -120,6 +141,7 @@ export function LiveCall({
     room.on(RoomEvent.LocalTrackUnpublished, refresh);
     room.on(RoomEvent.MediaDevicesChanged, onDevices);
     room.on(RoomEvent.Reconnecting, reconnecting);
+    room.on(RoomEvent.SignalReconnecting, reconnecting);
     room.on(RoomEvent.Reconnected, reconnected);
     room.on(RoomEvent.Disconnected, disconnected);
 
@@ -133,7 +155,11 @@ export function LiveCall({
         }),
         room.localParticipant.setCameraEnabled(true),
       ]);
-      if (!active) return;
+      if (!active) {
+        // Permission prompts may settle after leave/unmount; close any late tracks.
+        await disconnectRoomOnce(room);
+        return;
+      }
       setMediaErrors({
         microphone: results[0].status === "rejected"
           ? getMediaError(results[0].reason, "microphone") : undefined,
@@ -148,8 +174,8 @@ export function LiveCall({
 
     return () => {
       active = false;
-      room.off(RoomEvent.ParticipantConnected, refresh);
-      room.off(RoomEvent.ParticipantDisconnected, refresh);
+      room.off(RoomEvent.ParticipantConnected, peerJoined);
+      room.off(RoomEvent.ParticipantDisconnected, peerLeft);
       room.off(RoomEvent.TrackPublished, refresh);
       room.off(RoomEvent.TrackUnpublished, refresh);
       room.off(RoomEvent.TrackSubscribed, refresh);
@@ -160,6 +186,7 @@ export function LiveCall({
       room.off(RoomEvent.LocalTrackUnpublished, refresh);
       room.off(RoomEvent.MediaDevicesChanged, onDevices);
       room.off(RoomEvent.Reconnecting, reconnecting);
+      room.off(RoomEvent.SignalReconnecting, reconnecting);
       room.off(RoomEvent.Reconnected, reconnected);
       room.off(RoomEvent.Disconnected, disconnected);
     };
@@ -256,12 +283,14 @@ export function LiveCall({
       />
     </div>
     <RemoteAudio track={peerMic?.audioTrack} volume={volume} />
-    {!peer && <p className="hint" role="status">Waiting for the other person to join using the invitation link.</p>}
+    {!peer && <p className="hint" role="status">{peerPresence === "left"
+      ? "The other person left the call. You can wait for them to return or leave."
+      : "Waiting for the other person to join using the invitation link."}</p>}
     {!room.canPlaybackAudio && <div className="call-alert">
       <p>Browser audio playback may be blocked.</p>
       <button type="button" onClick={enableAudio} disabled={action !== null}>Enable incoming sound</button>
     </div>}
-    {connection === "disconnected" && <p role="alert">The call disconnected. Leave and join again to reconnect.</p>}
+    {connection === "disconnected" && <p role="alert">The call has disconnected. Return to the room to join again.</p>}
     {connection === "reconnecting" && <p role="status">Connection interrupted; trying to reconnect…</p>}
     {mediaErrors.microphone && <p role="alert">{mediaErrors.microphone}</p>}
     {mediaErrors.camera && <p role="alert">{mediaErrors.camera}</p>}
@@ -269,11 +298,11 @@ export function LiveCall({
 
     <div className="call-controls" aria-label="Call controls">
       <button type="button" onClick={() => void toggleInput("microphone")}
-        aria-pressed={micOn} disabled={action !== null || connection === "disconnected"}>
+        aria-pressed={micOn} disabled={action !== null || connection !== "connected"}>
         {micOn ? "Mute mic" : "Turn mic on"}
       </button>
       <button type="button" onClick={() => void toggleInput("camera")}
-        aria-pressed={cameraOn} disabled={action !== null || connection === "disconnected"}>
+        aria-pressed={cameraOn} disabled={action !== null || connection !== "connected"}>
         {cameraOn ? "Turn camera off" : "Turn camera on"}
       </button>
       <button type="button" onClick={() => void onCopyInvite()} disabled={!canShare}>Copy invite link</button>

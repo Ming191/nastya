@@ -1,10 +1,11 @@
 "use client";
 
-import { Room } from "livekit-client";
+import { Room, RoomEvent, type DisconnectReason } from "livekit-client";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LiveCall } from "../../../components/live-call";
+import { disconnectMessage, disconnectRoomOnce, joinFailureMessage, networkFailureMessage } from "../../../lib/call-lifecycle";
 import {
   guestShareUrl, isRoomId, languageLabel, readRoomInvite,
   type JoinResponse, type SpokenLanguage,
@@ -20,6 +21,10 @@ export default function RoomEntryPage() {
   const [canShare, setCanShare] = useState(false);
   const roomRef = useRef<Room | null>(null);
   const mounted = useRef(false);
+  const connectingRef = useRef(false);
+  const requestRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(0);
+  const leavingRef = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -36,16 +41,54 @@ export default function RoomEntryPage() {
       // Session storage may be disabled by browser privacy settings.
       // Joining will show a useful error if session storage is not permitted.
     }
-    return () => {
-      mounted.current = false;
+    const onPageHide = () => {
+      generationRef.current++;
+      requestRef.current?.abort();
       const current = roomRef.current;
       roomRef.current = null;
-      if (current) void current.disconnect(true);
+      if (current) void disconnectRoomOnce(current);
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      // BFCache restores the React tree, but the prior RTC session was closed.
+      connectingRef.current = false;
+      leavingRef.current = false;
+      setJoined(null);
+      setBusy(false);
+      setStatus("Page restored. Join the video call again.");
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      onPageHide();
     };
   }, [roomId]);
 
+  useEffect(() => {
+    if (!joined) return;
+    const client = joined.room;
+    const terminal = (reason?: DisconnectReason) => {
+      if (!mounted.current || leavingRef.current || roomRef.current !== client) return;
+      roomRef.current = null;
+      setJoined(null);
+      setStatus(disconnectMessage(reason));
+      void disconnectRoomOnce(client);
+    };
+    client.on(RoomEvent.Disconnected, terminal);
+    return () => { client.off(RoomEvent.Disconnected, terminal); };
+  }, [joined]);
+
   async function join() {
-    if (!isRoomId(roomId) || busy || roomRef.current) return;
+    if (!isRoomId(roomId) || connectingRef.current || roomRef.current) return;
+    connectingRef.current = true;
+    const generation = ++generationRef.current;
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const active = () => mounted.current && generationRef.current === generation &&
+      !controller.signal.aborted;
     setBusy(true);
     setStatus("");
     let client: Room | null = null;
@@ -66,13 +109,15 @@ export default function RoomEntryPage() {
           version: 1, roomId, invite: capability.token, preferredLanguage: language,
         }),
         cache: "no-store",
+        signal: controller.signal,
       });
+      if (!active()) return;
       const payload: unknown = await response.json();
       if (!response.ok) {
         const code = typeof payload === "object" && payload && "error" in payload &&
           typeof payload.error === "object" && payload.error && "code" in payload.error
           ? String(payload.error.code) : "UNABLE_TO_JOIN";
-        setStatus("Unable to join room: " + code.replaceAll("_", " ").toLowerCase());
+        setStatus(joinFailureMessage(code));
         return;
       }
       const result = payload as JoinResponse;
@@ -82,6 +127,8 @@ export default function RoomEntryPage() {
       }
       // Keep the JWT only in this in-memory SDK instance; never store in URL/storage/DOM.
       client = new Room({
+        disconnectOnPageLeave: true,
+        stopLocalTrackOnUnpublish: true,
         adaptiveStream: true,
         dynacast: true,
         audioCaptureDefaults: {
@@ -92,8 +139,8 @@ export default function RoomEntryPage() {
       });
       roomRef.current = client;
       await client.connect(result.wsUrl, result.participantToken);
-      if (!mounted.current) {
-        await client.disconnect(true);
+      if (!active()) {
+        await disconnectRoomOnce(client);
         return;
       }
       setCanShare(!!guestShareUrl(url.origin, roomId, window.sessionStorage));
@@ -103,21 +150,26 @@ export default function RoomEntryPage() {
       } });
     } catch {
       if (client) {
-        await client.disconnect(true);
+        await disconnectRoomOnce(client);
         if (roomRef.current === client) roomRef.current = null;
       }
-      if (mounted.current) {
-        setStatus("Could not connect to the call. Check your network, invitation and LiveKit settings.");
+      if (active()) {
+        setStatus(networkFailureMessage(navigator.onLine));
       }
     } finally {
-      if (mounted.current) setBusy(false);
+      if (requestRef.current === controller) requestRef.current = null;
+      if (generationRef.current === generation) connectingRef.current = false;
+      if (active()) setBusy(false);
     }
   }
 
   async function leave() {
+    leavingRef.current = true;
+    generationRef.current++;
+    requestRef.current?.abort();
     const current = roomRef.current;
     roomRef.current = null;
-    if (current) await current.disconnect(true);
+    if (current) await disconnectRoomOnce(current);
     setJoined(null);
     router.push("/");
   }
