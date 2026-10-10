@@ -75,7 +75,10 @@ class HttpSpeechRecognizer:
             files={"file": ("speech.wav", wav, "audio/wav")},
             headers=headers,
         )
-        return Transcript(text=_decode_text(payload, "text", allow_empty=True), language=language)
+        detected = payload.get("language", language)
+        if detected not in ("vi", "ru"):
+            raise InferenceError("STT returned unsupported detected language")
+        return Transcript(text=_decode_text(payload, "text", allow_empty=True), language=detected)
 
 
 class HttpTranslator:
