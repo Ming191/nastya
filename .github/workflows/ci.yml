@@ -18,10 +18,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - name: Resolve lockfile with Playwright (one-time bootstrap)
-        run: |
-          npm install --no-audit --no-fund
-          base64 package-lock.json | sed 's/^/LOCK64:/'
+      - run: npm ci --no-audit --no-fund
       - run: npm run check:web
       - run: npm run build:web
 
@@ -51,8 +48,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - name: Install web and Playwright test dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install locked web and Playwright test dependencies
+        run: npm ci --no-audit --no-fund
       - name: Start local LiveKit SFU
         run: |
           docker run -d --rm --network host --name nastya-livekit-e2e \

@@ -82,7 +82,7 @@ export async function collectRtcStats(page: Page): Promise<Sample[]> {
           });
         } else if (entry.type === "outbound-rtp" && !entry.isRemote) {
           outbound.push({
-            kind: entry.kind || entry.mediaType || "unknown",
+            kind: String(entry.kind ?? entry.mediaType ?? "unknown"),
             packetsSent: num("packetsSent") ?? 0,
             bytesSent: num("bytesSent") ?? 0,
           });
