@@ -115,7 +115,7 @@ async def benchmark_mt(
 
             async def translate(row: dict, api=provider):
                 return (
-                    await provider.translate(
+                    await api.translate(
                         row["source_text"], row["source_language"], row["target_language"]
                     )
                 ).text
@@ -172,7 +172,7 @@ async def benchmark_stt(
 
             async def transcribe(sample: dict, api=provider):
                 return (
-                    await provider.transcribe(sample["_path"].read_bytes(), sample["language"])
+                    await api.transcribe(sample["_path"].read_bytes(), sample["language"])
                 ).text
 
             records, elapsed = await _execute(inputs, concurrency, transcribe)
