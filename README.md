@@ -116,3 +116,9 @@ curl -X POST http://localhost:3000/api/rooms/join \
 ```
 
 Keep owner invitations private. Guest links are bearer credentials: anyone with a valid link can request the guest role while it is unoccupied. Per-process throttling is only a basic abuse backstop; use trusted edge rate limits for public deployment.
+
+## Video calls
+
+After configuring LiveKit under `apps/web/.env.local`, run `npm ci && npm run dev:web`. Create a room at http://localhost:3000, share the guest invitation link, and open **Continue as room owner**. On both browsers, choose a spoken language and select **Join video call**. Allow camera and microphone access when prompted. Both participants can mute/unmute, enable/disable camera, select input/output devices where supported, adjust the remote volume, copy the guest invitation, and leave the room.
+
+Use HTTPS for remote/browser deployments so device permissions and WebRTC work reliably. If autoplay is blocked, press **Enable incoming sound**. If no camera or microphone is available, the other media stream can still be used. Speaker selection depends on browser support. LiveKit credentials are required for actual rooms and media; the localhost model mock does not replace LiveKit.
