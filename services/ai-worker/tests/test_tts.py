@@ -1,14 +1,18 @@
 import asyncio
 import json
-from types import SimpleNamespace
 
 import pytest
 
 from nastya_worker.providers.edge_tts import (
-    DEFAULT_VOICE, MAX_AUDIO_BYTES, EdgeSpeechSynthesizer, VOICES,
+    DEFAULT_VOICE,
+    MAX_AUDIO_BYTES,
+    VOICES,
+    EdgeSpeechSynthesizer,
 )
 from nastya_worker.providers.tts import (
-    OptionalTts, SpeechSynthesisError, SynthesizedSpeech,
+    OptionalTts,
+    SpeechSynthesisError,
+    SynthesizedSpeech,
 )
 from nastya_worker.tts_config import TtsSettings
 from nastya_worker.tts_experiment import SAMPLES, experiment
@@ -66,7 +70,8 @@ def test_synthesizes_mp3_and_measures_actual_first_chunk_delay():
             {"type": "WordBoundary", "text": "ignored"},
             {"type": "audio", "data": b"\xff\xfb\x90\x64"},
             {"type": "audio", "data": b"\x00\x00"},
-        ], delay=0.015,
+        ],
+        delay=0.015,
     )
     provider = EdgeSpeechSynthesizer(2, communicate_factory=lambda text, voice: instance)
     speech = run(provider.synthesize("Привет", "ru", DEFAULT_VOICE["ru"], "human:owner:1:1"))
@@ -100,26 +105,36 @@ def test_invalid_text_voice_and_utterance_never_reach_external_provider():
 
 def test_no_audio_and_oversize_fail_safely():
     provider = EdgeSpeechSynthesizer(
-        communicate_factory=lambda text, voice: FakeCommunicate([
-            {"type": "SentenceBoundary", "text": "ok"},
-        ]),
+        communicate_factory=lambda text, voice: FakeCommunicate(
+            [
+                {"type": "SentenceBoundary", "text": "ok"},
+            ]
+        ),
     )
     with pytest.raises(SpeechSynthesisError) as err:
         run(provider.synthesize("Xin chào", "vi", DEFAULT_VOICE["vi"], "u"))
     assert err.value.code == "invalid_audio"
     provider = EdgeSpeechSynthesizer(
-        communicate_factory=lambda text, voice: FakeCommunicate([
-            {"type": "audio", "data": bytes(MAX_AUDIO_BYTES + 1)},
-        ]),
+        communicate_factory=lambda text, voice: FakeCommunicate(
+            [
+                {"type": "audio", "data": bytes(MAX_AUDIO_BYTES + 1)},
+            ]
+        ),
     )
     with pytest.raises(SpeechSynthesisError) as err:
         run(provider.synthesize("Xin chào", "vi", DEFAULT_VOICE["vi"], "u"))
     assert err.value.code == "invalid_audio"
 
 
-@pytest.mark.parametrize("status,code", [
-    (429, "throttled"), (403, "denied"), (401, "denied"), (503, "unavailable"),
-])
+@pytest.mark.parametrize(
+    "status,code",
+    [
+        (429, "throttled"),
+        (403, "denied"),
+        (401, "denied"),
+        (503, "unavailable"),
+    ],
+)
 def test_provider_status_codes_are_sanitized_and_no_auto_retry(status, code):
     class UpstreamError(Exception):
         def __init__(self):
@@ -127,6 +142,7 @@ def test_provider_status_codes_are_sanitized_and_no_auto_retry(status, code):
             super().__init__("upstream PRIVATE TRANSCRIPT TOKEN=secret")
 
     calls = []
+
     def factory(text, voice):
         calls.append(voice)
         return FakeCommunicate(failure=UpstreamError())
@@ -141,7 +157,7 @@ def test_provider_status_codes_are_sanitized_and_no_auto_retry(status, code):
 
 def test_timeout_closes_async_stream_without_retry():
     fake = FakeCommunicate([{"type": "audio", "data": b"valid"}], delay=0.8)
-    provider = EdgeSpeechSynthesizer(.5, communicate_factory=lambda text, voice: fake)
+    provider = EdgeSpeechSynthesizer(0.5, communicate_factory=lambda text, voice: fake)
     with pytest.raises(SpeechSynthesisError) as err:
         run(provider.synthesize("Xin chào", "vi", DEFAULT_VOICE["vi"], "u"))
     assert err.value.code == "timeout"
@@ -152,6 +168,7 @@ def test_optional_tts_isolation_and_cancel_propagation():
     class Failing:
         async def synthesize(self, *args):
             raise RuntimeError("secret: private speech")
+
     service = OptionalTts(True, Failing())
     outcome = run(service.synthesize("text", "vi", DEFAULT_VOICE["vi"], "u"))
     assert outcome.audio is None and outcome.reason == "unavailable"
@@ -159,6 +176,7 @@ def test_optional_tts_isolation_and_cancel_propagation():
     class Cancelled:
         async def synthesize(self, *args):
             raise asyncio.CancelledError
+
     with pytest.raises(asyncio.CancelledError):
         run(OptionalTts(True, Cancelled()).synthesize("text", "vi", "voice", "u"))
 
@@ -170,9 +188,11 @@ def test_opt_in_experiment_writes_only_synthetic_samples(tmp_path, monkeypatch):
 
     class StubSettings:
         enabled = True
+
         @classmethod
         def from_env(cls):
             return cls()
+
         def build(self):
             return OptionalTts(True, FakeSynth())
 
@@ -185,8 +205,7 @@ def test_opt_in_experiment_writes_only_synthetic_samples(tmp_path, monkeypatch):
     assert report["intelligibility_verified"] is False
     assert all(row["first_audio_latency_ms"] == 2.5 for row in report["samples"])
     assert all(
-        (tmp_path / row["file"]).read_bytes() == b"\xff\xfbtest"
-        for row in report["samples"]
+        (tmp_path / row["file"]).read_bytes() == b"\xff\xfbtest" for row in report["samples"]
     )
     assert "Привет" not in json.dumps(report, ensure_ascii=False)
 

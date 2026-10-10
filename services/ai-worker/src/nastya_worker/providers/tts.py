@@ -6,8 +6,14 @@ from typing import Literal, Protocol
 from nastya_worker.providers.types import Language
 
 TtsFailure = Literal[
-    "disabled", "invalid_request", "unsupported_voice", "timeout",
-    "throttled", "denied", "unavailable", "invalid_audio",
+    "disabled",
+    "invalid_request",
+    "unsupported_voice",
+    "timeout",
+    "throttled",
+    "denied",
+    "unavailable",
+    "invalid_audio",
 ]
 
 
@@ -24,8 +30,11 @@ class SynthesizedSpeech:
 
 class SpeechSynthesizer(Protocol):
     async def synthesize(
-        self, text: str, target_language: Language,
-        speaker_voice: str, utterance_id: str,
+        self,
+        text: str,
+        target_language: Language,
+        speaker_voice: str,
+        utterance_id: str,
     ) -> SynthesizedSpeech: ...
 
 
@@ -48,8 +57,11 @@ class OptionalTts:
         self._enabled, self._provider = enabled, provider
 
     async def synthesize(
-        self, text: str, target_language: Language,
-        speaker_voice: str, utterance_id: str,
+        self,
+        text: str,
+        target_language: Language,
+        speaker_voice: str,
+        utterance_id: str,
     ) -> TtsOutcome:
         if not self._enabled:
             return TtsOutcome(None, "disabled")
@@ -57,7 +69,10 @@ class OptionalTts:
             return TtsOutcome(None, "unavailable")
         try:
             value = await self._provider.synthesize(
-                text, target_language, speaker_voice, utterance_id,
+                text,
+                target_language,
+                speaker_voice,
+                utterance_id,
             )
         except SpeechSynthesisError as exc:
             return TtsOutcome(None, exc.code)

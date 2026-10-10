@@ -43,11 +43,14 @@ async def experiment(language: str, voice: str, folder: Path) -> dict:
         uid = f"tts-sample-{language}-{index}"
         response = await synth.synthesize(text, language, voice, uid)
         record = {
-            "id": uid, "language": language, "voice": voice,
+            "id": uid,
+            "language": language,
+            "voice": voice,
             "status": "ok" if response.audio is not None else response.reason,
             "first_audio_latency_ms": None,
             "total_latency_ms": None,
-            "bytes": 0, "file": None,
+            "bytes": 0,
+            "file": None,
         }
         if response.audio is not None:
             speech = response.audio
@@ -59,7 +62,8 @@ async def experiment(language: str, voice: str, folder: Path) -> dict:
             record.update(
                 first_audio_latency_ms=speech.first_audio_latency_ms,
                 total_latency_ms=speech.total_latency_ms,
-                bytes=len(speech.audio), file=name,
+                bytes=len(speech.audio),
+                file=name,
             )
         records.append(record)
     result = {

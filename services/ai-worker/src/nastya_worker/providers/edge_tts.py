@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import aclosing
 from typing import Any
 
-from nastya_worker.providers.tts import SynthesizedSpeech, SpeechSynthesisError
+from nastya_worker.providers.tts import SpeechSynthesisError, SynthesizedSpeech
 from nastya_worker.providers.types import Language
 
 MAX_CHARS = 500
@@ -41,8 +41,10 @@ class EdgeSpeechSynthesizer:
     """Collects <=2 MiB MP3 in RAM and measures time to first real audio chunk."""
 
     def __init__(
-        self, timeout_seconds: float = 8.0,
-        *, communicate_factory: Callable[[str, str], Any] | None = None,
+        self,
+        timeout_seconds: float = 8.0,
+        *,
+        communicate_factory: Callable[[str, str], Any] | None = None,
     ) -> None:
         if not 0.5 <= timeout_seconds <= 30:
             raise ValueError("TTS timeout must be between 0.5 and 30 seconds")
@@ -59,8 +61,11 @@ class EdgeSpeechSynthesizer:
         return edge_tts.Communicate(text, voice)
 
     async def synthesize(
-        self, text: str, target_language: Language,
-        speaker_voice: str, utterance_id: str,
+        self,
+        text: str,
+        target_language: Language,
+        speaker_voice: str,
+        utterance_id: str,
     ) -> SynthesizedSpeech:
         safe_text = validate_request(text, target_language, speaker_voice, utterance_id)
         started = time.perf_counter()
@@ -91,15 +96,20 @@ class EdgeSpeechSynthesizer:
         except Exception as exc:
             # Upstream exceptions can contain private input, proxy URL or headers.
             status = getattr(exc, "status", None)
-            code = "throttled" if status == 429 else (
-                "denied" if status in (401, 403) else "unavailable"
+            code = (
+                "throttled"
+                if status == 429
+                else ("denied" if status in (401, 403) else "unavailable")
             )
             raise SpeechSynthesisError(code) from exc
         if not audio or first_ms is None:
             raise SpeechSynthesisError("invalid_audio")
         return SynthesizedSpeech(
-            utterance_id=utterance_id, language=target_language,
-            voice=speaker_voice, format="audio/mpeg", audio=bytes(audio),
+            utterance_id=utterance_id,
+            language=target_language,
+            voice=speaker_voice,
+            format="audio/mpeg",
+            audio=bytes(audio),
             first_audio_latency_ms=round(first_ms, 2),
             total_latency_ms=round((time.perf_counter() - started) * 1000, 2),
         )

@@ -34,15 +34,6 @@ jobs:
         with:
           python-version-file: services/ai-worker/.python-version
       - run: python -m pip install -e '.[dev,rtc,tts]'
-      - name: Normalize optional TTS Python sources for review (temporary)
-        run: |
-          ruff check --fix src/nastya_worker/providers/tts.py src/nastya_worker/providers/edge_tts.py src/nastya_worker/tts_config.py src/nastya_worker/tts_experiment.py tests/test_tts.py
-          ruff format src/nastya_worker/providers/tts.py src/nastya_worker/providers/edge_tts.py src/nastya_worker/tts_config.py src/nastya_worker/tts_experiment.py tests/test_tts.py
-          for file in src/nastya_worker/providers/tts.py src/nastya_worker/providers/edge_tts.py src/nastya_worker/tts_config.py src/nastya_worker/tts_experiment.py tests/test_tts.py; do
-            echo "FMT_FILE_START:$file"
-            base64 "$file" | sed 's/^/FMT64:/'
-            echo "FMT_FILE_END:$file"
-          done
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
