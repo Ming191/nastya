@@ -144,8 +144,7 @@ async def live_samples(folder: Path, language: str) -> dict:
             "cases": results,
             "humanReview": "NOT_REVIEWED",
             "note": (
-                "First audio is the Edge client response, NOT end-of-speech "
-                "to browser playback."
+                "First audio is the Edge client response, NOT end-of-speech to browser playback."
             ),
         },
     )

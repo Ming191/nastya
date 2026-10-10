@@ -34,12 +34,6 @@ jobs:
         with:
           python-version-file: services/ai-worker/.python-version
       - run: python -m pip install -e '.[dev,rtc,tts]'
-      - name: Normalize voice QA source exact Ruff format (temporary)
-        run: |
-          ruff format src/nastya_worker/voice_qa.py
-          echo "FMT_FILE_START:src/nastya_worker/voice_qa.py"
-          base64 src/nastya_worker/voice_qa.py | sed 's/^/FMT64:/'
-          echo "FMT_FILE_END:src/nastya_worker/voice_qa.py"
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
