@@ -171,9 +171,7 @@ async def benchmark_stt(
             inputs = [(f"{s['id']}:{round_id}", s) for round_id in range(rounds) for s in samples]
 
             async def transcribe(sample: dict, api=provider):
-                return (
-                    await api.transcribe(sample["_path"].read_bytes(), sample["language"])
-                ).text
+                return (await api.transcribe(sample["_path"].read_bytes(), sample["language"])).text
 
             records, elapsed = await _execute(inputs, concurrency, transcribe)
             count = defaultdict(
