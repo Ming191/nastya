@@ -42,8 +42,10 @@ async def publish_status(room: Any, speaker: str, source: str, code: str) -> int
     if room.local_participant.identity != "interpreter":
         raise ValueError("only interpreter can send health data")
     recipients = sorted(
-        p.identity for p in room.remote_participants.values()
-        if p.identity in HUMANS and p.identity != speaker
+        p.identity
+        for p in room.remote_participants.values()
+        if p.identity in HUMANS
+        and p.identity != speaker
         and p.attributes.get("sourceLanguage") == target
     )
     if not recipients:
@@ -68,6 +70,7 @@ async def publish_status(room: Any, speaker: str, source: str, code: str) -> int
 @dataclass(frozen=True, slots=True)
 class CaptionObservation:
     """No private text, speech-wall-clock guess, or cross-device latency claims."""
+
     sample_id: str
     direction: str
     result: str
@@ -99,8 +102,7 @@ class TranslationPipeline:
         self.observe = observe
         self.next_sequence = dict.fromkeys(HUMANS, 0)
         self.voices = (
-            {speaker: VoiceDelivery(room, tts) for speaker in HUMANS}
-            if tts is not None else {}
+            {speaker: VoiceDelivery(room, tts) for speaker in HUMANS} if tts is not None else {}
         )
         self.closed = False
         self.fallbacks = 0
