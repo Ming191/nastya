@@ -12,7 +12,6 @@ dependencies = ["httpx>=0.28.1,<0.29"]
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.13.3"]
 rtc = ["livekit==1.1.20", "livekit-api==1.2.1"]
-tts = ["edge-tts==7.2.8"]
 
 [project.scripts]
 nastya-worker = "nastya_worker.cli:main"

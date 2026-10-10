@@ -91,6 +91,8 @@ jobs:
           python3 services/ai-worker/tests/smoke_livekit_ingress.py
       - name: Real SFU targeted caption data smoke
         run: python3 services/ai-worker/tests/smoke_caption_data.py
+      - name: Real SFU two-way targeted synthetic voice data smoke
+        run: python3 services/ai-worker/tests/smoke_voice_data.py
 
       - name: Upload sanitized RTC report and Playwright results
         if: always()

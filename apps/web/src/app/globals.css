@@ -73,3 +73,9 @@ section { border: 1px solid #43465a; border-radius: 12px; padding: 20px; margin-
 .caption-entry.partial { border-left-color: #cfbd80; }
 .caption-entry-heading { display: flex; justify-content: space-between; gap: 10px; color: #bac6eb; font-size: .85rem; }
 .caption-entry p { margin: 6px 0 0; max-width: unset; color: #f5f6fb; overflow-wrap: anywhere; }
+
+.voice-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 16px; border: 1px solid #586382; border-radius: 12px; background: #1c2535; }
+.voice-controls h2 { font-size: 1.12rem; margin: 0 0 4px; }
+.voice-controls p { margin: 0; font-size: .88rem; }
+.voice-controls > p[role="status"] { width: 100%; }
+.voice-controls .device-field { min-width: 120px; }

@@ -212,32 +212,3 @@ python -m nastya_worker --room nastya_0123456789abcdef0123456789abcdef
 
 The room ID is the opaque ID returned by the room-creation API. Run **one** interpreter process per room. It joins under `interpreter`, subscribes exclusively to owner/guest microphone tracks, segments each independently, and forwards temporary WAV utterances to your external STT endpoint. It never records audio or transcripts on disk. Disconnect/reconnect invalidates stale segments. The VAD is an uncalibrated energy heuristic: tune its settings after measuring speech/noise cases with permitted recordings. Captions and translations are separate functionality; this command currently exercises audio ingestion and transcription only. Default `python -m nastya_worker` without `--room` remains idle.
 
-## Experimental RU/VI speech synthesis
-
-The Python worker has an optional server-side Edge Read Aloud adapter. Speech
-synthesis is **disabled by default**; it is not connected to the video call
-or translated captions. It requires the optional Python package:
-
-```bash
-cd services/ai-worker
-python -m pip install -e '.[tts]'
-```
-
-To run a deliberately opt-in experiment on three fixed synthetic sentences
-per language (not user speech):
-
-```bash
-export NASTYA_TTS_ENABLED=true
-python -m nastya_worker.tts_experiment --live --language ru --output-dir /tmp/nastya-tts-ru
-python -m nastya_worker.tts_experiment --live --language vi --output-dir /tmp/nastya-tts-vi
-```
-
-Listen to the generated MP3 files before making any quality assessment. The
-JSON report records time-to-first-audio and total request latency for each
-sample; errors are recorded without exposing upstream response text.
-Supported voices: `ru-RU-SvetlanaNeural`, `ru-RU-DmitryNeural`,
-`vi-VN-HoaiMyNeural`, `vi-VN-NamMinhNeural`. No network request
-occurs without both the opt-in feature flag and the explicit `--live` option.
-The unofficial Edge Read Aloud endpoint is not a supported production API;
-confirm usage permissions and availability before deployment.
-
