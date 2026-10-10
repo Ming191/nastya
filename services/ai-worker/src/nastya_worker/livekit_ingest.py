@@ -1,7 +1,4 @@
-"""LiveKit RTC reader for one configured, operator-authorized private room.
-
-No AI output is published here; STT -> MT/caption events belong to NAS-19.
-"""
+"""LiveKit RTC reader and bounded RU/VI interpreter for one private room."""
 
 import asyncio
 import logging
@@ -13,8 +10,12 @@ from typing import Any
 import httpx
 
 from nastya_worker.config import Settings
-from nastya_worker.providers.http import HttpSpeechRecognizer
+from nastya_worker.providers.http import HttpSpeechRecognizer, HttpTranslator
+from nastya_worker.providers.tts import OptionalTts
+from nastya_worker.providers.types import Translator
 from nastya_worker.speaker_pipeline import HUMANS, SpeakerPipeline, source_language
+from nastya_worker.translation_pipeline import TranslationPipeline
+from nastya_worker.tts_config import TtsSettings
 
 LOGGER = logging.getLogger(__name__)
 ROOM_ID = re.compile(r"^nastya_[0-9a-f]{32}$")
@@ -60,7 +61,15 @@ def worker_token(room_id: str, keys: dict[str, str]) -> str:
 class RoomAudioReceiver:
     """Owns exactly one LiveKit room, two isolated microphone capture tasks."""
 
-    def __init__(self, room: Any, rtc: Any, recognizer: HttpSpeechRecognizer):
+    def __init__(
+        self,
+        room: Any,
+        rtc: Any,
+        recognizer: HttpSpeechRecognizer,
+        translator: Translator | None = None,
+        tts: OptionalTts | None = None,
+        mt_timeout_seconds: float = 8.0,
+    ):
         self.room = room
         self.rtc = rtc
         self.recognizer = recognizer
@@ -71,6 +80,21 @@ class RoomAudioReceiver:
         self.processed = 0
         self.failures = 0
         self._active = True
+        self._cancel_tasks: set[asyncio.Task] = set()
+        self.translation = (
+            TranslationPipeline(
+                room,
+                translator,
+                is_current=self._is_current,
+                tts=tts,
+                timeout_seconds=mt_timeout_seconds,
+            )
+            if translator is not None
+            else None
+        )
+
+    def _is_current(self, segment: Any) -> bool:
+        return self._active and self.epochs.get(segment.speaker) == segment.generation
 
     def accepts(self, publication: Any, participant: Any) -> bool:
         if participant.identity not in HUMANS:
@@ -126,6 +150,10 @@ class RoomAudioReceiver:
             self.readers.pop(identity)
             self.epochs[identity] += 1
             current[1].cancel()
+            if self.translation is not None:
+                task = asyncio.create_task(self.translation.stop_speaker(identity))
+                self._cancel_tasks.add(task)
+                task.add_done_callback(self._cancel_tasks.discard)
 
     def _attach(self, track: Any, publication: Any, participant: Any) -> None:
         identity = participant.identity
@@ -147,15 +175,14 @@ class RoomAudioReceiver:
         identity = segment.speaker
         if not self._active or self.epochs[identity] != segment.generation:
             return
-        # No content logs; caption publication will be added in NAS-19.
+        if self.translation is not None:
+            await self.translation.process(segment, transcript)
         self.processed += 1
-        LOGGER.info(
-            "stt_ok speaker=%s utterance=%s start_ms=%d end_ms=%d",
-            identity,
-            segment.utterance_id,
-            segment.start_ms,
-            segment.end_ms,
-        )
+        LOGGER.debug("stt_callback_ok speaker=%s", identity)
+
+    async def _on_stt_error(self, segment: Any) -> None:
+        if self.translation is not None:
+            await self.translation.stt_error(segment)
 
     async def _capture(self, identity: str, epoch: int, language: str, track: Any) -> None:
         stream = None
@@ -166,6 +193,7 @@ class RoomAudioReceiver:
             self.recognizer,
             self.inference,
             self._on_transcript,
+            on_stt_error=self._on_stt_error,
         )
         pipeline.start()
         try:
@@ -199,23 +227,32 @@ class RoomAudioReceiver:
         self.readers.clear()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if self._cancel_tasks:
+            await asyncio.gather(*self._cancel_tasks, return_exceptions=True)
+        if self.translation is not None:
+            await self.translation.shutdown()
 
 
 async def serve_room(room_id: str, settings: Settings) -> None:
     """One worker instance / one room, reconnect with fresh epoch after disconnect."""
-    if not settings.stt_url:
-        raise ValueError("NASTYA_STT_URL is required for RTC ingestion")
+    if not settings.api_ready:
+        raise ValueError("NASTYA_STT_URL and NASTYA_MT_URL are required for translated captions")
     keys = room_settings(room_id)
     from livekit import rtc
 
     backoff_seconds = 1
+    tts_config = TtsSettings.from_env()
     async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
         recognizer = HttpSpeechRecognizer(
             client, settings.stt_url, settings.stt_api_key, settings.stt_model
         )
+        translator = HttpTranslator(client, settings.mt_url, settings.mt_api_key, settings.mt_model)
         while True:
             room = rtc.Room()
-            receiver = RoomAudioReceiver(room, rtc, recognizer)
+            tts = tts_config.build() if tts_config.enabled else None
+            receiver = RoomAudioReceiver(
+                room, rtc, recognizer, translator, tts, settings.mt_timeout_seconds
+            )
             receiver.register()
             try:
                 await room.connect(

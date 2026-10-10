@@ -33,7 +33,7 @@ def caption():
 def test_protocol_schema_matches_python_publisher(caption):
     path = Path(__file__).resolve().parents[3] / "protocol" / "caption.v1.schema.json"
     schema = json.loads(path.read_text(encoding="utf-8"))
-    assert set(schema["required"]) == FIELDS
+    assert set(schema["required"]) == FIELDS - {"translationState"}
     assert schema["additionalProperties"] is False
     assert schema["properties"]["sourceText"]["maxLength"] == 2000
     assert schema["properties"]["revision"]["maximum"] == 1_000_000
@@ -122,3 +122,16 @@ def test_send_only_to_matching_other_human_and_reliable_final(caption):
             await publish_caption(room, final)
 
     asyncio.run(run())
+
+
+def test_optional_translation_state_is_strict_and_legacy_v1_remains_compatible(caption):
+    assert validate_caption(caption) == caption
+    assert validate_caption({**caption, "translationState": "pending"})
+    with pytest.raises(ValueError, match="state"):
+        validate_caption({**caption, "translationState": "source_only"})
+    with pytest.raises(ValueError, match="state"):
+        validate_caption({**caption, "translationState": "unknown"})
+    complete = {**caption, "isFinal": True, "translatedText": "Xin chào"}
+    assert validate_caption({**complete, "translationState": "source_only"})
+    with pytest.raises(ValueError, match="state"):
+        validate_caption({**complete, "translationState": "pending"})

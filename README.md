@@ -210,13 +210,15 @@ python -m pip install -e '.[rtc]'
 python -m nastya_worker --room nastya_0123456789abcdef0123456789abcdef
 ```
 
-The room ID is the opaque ID returned by the room-creation API. Run **one** interpreter process per room. It joins under `interpreter`, subscribes exclusively to owner/guest microphone tracks, segments each independently, and forwards temporary WAV utterances to your external STT endpoint. It never records audio or transcripts on disk. Disconnect/reconnect invalidates stale segments. The VAD is an uncalibrated energy heuristic: tune its settings after measuring speech/noise cases with permitted recordings. Captions and translations are separate functionality; this command currently exercises audio ingestion and transcription only. Default `python -m nastya_worker` without `--room` remains idle.
+The room ID is the opaque ID returned by the room-creation API. Run **one** interpreter process per room. It joins under `interpreter`, subscribes exclusively to owner/guest microphone tracks, segments each independently, then invokes the configured STT and MT APIs. The other participant receives an original-text partial and a translated final caption. On MT failure the final caption explicitly displays original speech instead. Set `NASTYA_MT_TIMEOUT_SECONDS` (default 8) to bound the translation step. STT failures cannot produce a transcript; the interpreter sends a status code without inventing text. It never records audio or transcripts on disk. Disconnect/reconnect invalidates stale segments. The VAD is an uncalibrated energy heuristic: tune its settings after measuring speech/noise cases with permitted recordings. Default `python -m nastya_worker` without `--room` remains idle.
 
 ## Experimental RU/VI speech synthesis
 
 The Python worker has an optional server-side Edge Read Aloud adapter. Speech
-synthesis is **disabled by default**; it is not connected to the video call
-or translated captions. It requires the optional Python package:
+synthesis is **disabled by default**. When enabled in the interpreter worker, it
+runs after a successfully delivered translated final caption and sends private,
+recipient-only MP3 data packets. Original microphone audio remains independent.
+It requires the optional Python package:
 
 ```bash
 cd services/ai-worker
@@ -239,7 +241,8 @@ Supported voices: `ru-RU-SvetlanaNeural`, `ru-RU-DmitryNeural`,
 `vi-VN-HoaiMyNeural`, `vi-VN-NamMinhNeural`. No network request
 occurs without both the opt-in feature flag and the explicit `--live` option.
 The unofficial Edge Read Aloud endpoint is not a supported production API;
-confirm usage permissions and availability before deployment.
+confirm usage permissions and availability before deployment. A web participant
+must separately enable translated voice playback, which is off by default.
 
 ## Voice quality evaluation
 

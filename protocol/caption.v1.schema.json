@@ -85,6 +85,13 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 86400000
+    },
+    "translationState": {
+      "enum": [
+        "pending",
+        "translated",
+        "source_only"
+      ]
     }
   },
   "allOf": [
@@ -132,6 +139,47 @@
         "properties": {
           "translatedText": {
             "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "translationState": {
+            "const": "pending"
+          }
+        },
+        "required": [
+          "translationState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "isFinal": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "translationState": {
+            "enum": [
+              "translated",
+              "source_only"
+            ]
+          }
+        },
+        "required": [
+          "translationState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "isFinal": {
+            "const": true
           }
         }
       }

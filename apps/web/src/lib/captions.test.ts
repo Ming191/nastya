@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { CaptionStore, decodeCaption, parseCaption, MAX_CAPTIONS, CAPTION_TOPIC, type CaptionEvent } from "./captions";
+import { CaptionStore, decodeCaption, decodeInterpreterStatus, parseCaption, MAX_CAPTIONS, CAPTION_TOPIC, INTERPRETER_STATUS_TOPIC, type CaptionEvent } from "./captions";
 
 const ROOM = "nastya_" + "a".repeat(32);
 const base: CaptionEvent = {
@@ -109,4 +109,40 @@ test("bounded memory, cleared partials and sealed final tombstones survive recon
   store.clear();
   assert.equal(store.size, 0);
   assert.equal(store.receive(base), true);
+});
+
+
+test("source-only fallback and original partial are explicit, strictly validated states", () => {
+  const pending = { ...base, translationState: "pending" };
+  const fallback = {
+    ...base, revision: 1, isFinal: true,
+    translatedText: base.sourceText, translationState: "source_only",
+  };
+  assert.ok(parseCaption(pending));
+  assert.ok(parseCaption(fallback));
+  assert.ok(decodeCaption(data(fallback), envelope));
+  for (const invalid of [
+    { ...base, translationState: "unknown" },
+    { ...base, translationState: "translated" },
+    { ...fallback, isFinal: false },
+    { ...fallback, translationState: "pending" },
+  ]) assert.equal(parseCaption(invalid), null);
+});
+
+test("interpreter health is recipient-only and never accepts spoofed messages", () => {
+  const health = {
+    version: 1, type: "interpreter.status", roomId: ROOM,
+    speakerId: "human:owner", targetLanguage: "ru", code: "translation_unavailable",
+  };
+  const trusted = { ...envelope, topic: INTERPRETER_STATUS_TOPIC };
+  assert.deepEqual(decodeInterpreterStatus(data(health), trusted), health);
+  for (const bad of [
+    { ...health, code: "unsafe_text" },
+    { ...health, roomId: "nastya_" + "b".repeat(32) },
+    { ...health, targetLanguage: "vi" },
+    { ...health, sourceText: "private" },
+    { ...health, speakerId: "interpreter" },
+  ]) assert.equal(decodeInterpreterStatus(data(bad), trusted), null);
+  assert.equal(decodeInterpreterStatus(data(health), { ...trusted, senderIdentity: "human:owner" }), null);
+  assert.equal(decodeInterpreterStatus(data(health), envelope), null);
 });
