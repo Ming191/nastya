@@ -81,6 +81,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run synthetic two-client RTC acceptance suite
         run: npm run test:rtc
+      - name: Install Python worker with native LiveKit RTC SDK
+        run: |
+          python3 -m pip install --break-system-packages -e 'services/ai-worker[rtc]'
+      - name: Real SFU two-microphone interpreter ingress smoke
+        run: |
+          python3 services/ai-worker/tests/smoke_livekit_ingress.py
+
       - name: Upload sanitized RTC report and Playwright results
         if: always()
         uses: actions/upload-artifact@v4
