@@ -281,7 +281,10 @@ def summary(rows: list[dict]) -> dict:
             e for e in events if e["direction"] == direction
         ]) for direction in sorted(DIRECTIONS)},
         "acceptanceReadyForLatencyReview": bool(events) and accepted,
-        "reason": "True only with >=20 live playbacks per direction, clock bound <=50 ms, and >=20 IDs. Human review is separate.",
+        "reason": (
+            "True only with >=20 live playbacks per direction, clock bound <=50 ms, "
+            "and >=20 IDs. Human review is separate."
+        ),
     }
 
 
