@@ -106,7 +106,7 @@ async def benchmark_mt(
         for model in models:
             provider = HttpTranslator(client, endpoint, api_key, model)
             for row in rows[:warmup]:
-                await api.translate(
+                await provider.translate(
                     row["source_text"], row["source_language"], row["target_language"]
                 )
             inputs = [
@@ -167,7 +167,7 @@ async def benchmark_stt(
         for model in models:
             provider = HttpSpeechRecognizer(client, endpoint, api_key, model)
             for sample in samples[:warmup]:
-                await api.transcribe(sample["_path"].read_bytes(), sample["language"])
+                await provider.transcribe(sample["_path"].read_bytes(), sample["language"])
             inputs = [(f"{s['id']}:{round_id}", s) for round_id in range(rounds) for s in samples]
 
             async def transcribe(sample: dict, api=provider):
