@@ -184,6 +184,7 @@ class SpeakerPipeline:
         recognizer: SpeechRecognizer,
         semaphore: asyncio.Semaphore,
         on_transcript: Callable[[Segment, Transcript], Awaitable[None]],
+        on_stt_error: Callable[[Segment], Awaitable[None]] | None = None,
         queue_limit: int = 2,
         expiry_seconds: float = 8.0,
         vad: VadOptions | None = None,
@@ -193,6 +194,7 @@ class SpeakerPipeline:
         self.segmenter = Segmenter(speaker, language, generation, vad)
         self.recognizer, self.semaphore = recognizer, semaphore
         self.on_transcript = on_transcript
+        self.on_stt_error = on_stt_error
         self.queue: asyncio.Queue[Segment] = asyncio.Queue(maxsize=queue_limit)
         self.expiry_seconds = expiry_seconds
         self.dropped = self.failures = self.processed = 0
@@ -238,16 +240,23 @@ class SpeakerPipeline:
                         transcript = await self.recognizer.transcribe(
                             segment.wav(), segment.language
                         )
-                        if (
-                            self.running
-                            and time.monotonic() - segment.created_at <= self.expiry_seconds
-                        ):
-                            await self.on_transcript(segment, transcript)
-                            self.processed += 1
-                        else:
-                            self.dropped += 1
                     except Exception:
                         self.failures += 1
+                        if self.running and self.on_stt_error:
+                            try:
+                                await self.on_stt_error(segment)
+                            except Exception:
+                                pass
+                        continue
+                # MT and caption publication do not hold the STT semaphore.
+                if self.running and time.monotonic() - segment.created_at <= self.expiry_seconds:
+                    try:
+                        await self.on_transcript(segment, transcript)
+                        self.processed += 1
+                    except Exception:
+                        self.failures += 1
+                else:
+                    self.dropped += 1
             finally:
                 self.queue.task_done()
 
