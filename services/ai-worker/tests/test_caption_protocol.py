@@ -13,11 +13,20 @@ ROOM = "nastya_" + "a" * 32
 @pytest.fixture()
 def caption():
     return {
-        "version": 1, "type": "caption.upsert", "roomId": ROOM,
-        "speakerId": "human:owner", "utteranceId": "human:owner:4:1",
-        "revision": 0, "sequence": 1, "sourceLanguage": "vi", "targetLanguage": "ru",
-        "sourceText": "Xin chào", "translatedText": "", "isFinal": False,
-        "startOffsetMs": 10, "endOffsetMs": 1000,
+        "version": 1,
+        "type": "caption.upsert",
+        "roomId": ROOM,
+        "speakerId": "human:owner",
+        "utteranceId": "human:owner:4:1",
+        "revision": 0,
+        "sequence": 1,
+        "sourceLanguage": "vi",
+        "targetLanguage": "ru",
+        "sourceText": "Xin chào",
+        "translatedText": "",
+        "isFinal": False,
+        "startOffsetMs": 10,
+        "endOffsetMs": 1000,
     }
 
 
@@ -31,14 +40,24 @@ def test_protocol_schema_matches_python_publisher(caption):
     assert validate_caption(caption) == caption
 
 
-@pytest.mark.parametrize("field,value", [
-    ("revision", True), ("sequence", -1), ("version", 2), ("type", "other"),
-    ("speakerId", "interpreter"), ("sourceLanguage", "ru"),
-    ("roomId", "private-other"), ("utteranceId", "../anything"),
-    ("sourceText", ""), ("sourceText", "a" * 2001),
-    ("translatedText", "a" * 2001), ("startOffsetMs", -1),
-    ("endOffsetMs", 60000),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("revision", True),
+        ("sequence", -1),
+        ("version", 2),
+        ("type", "other"),
+        ("speakerId", "interpreter"),
+        ("sourceLanguage", "ru"),
+        ("roomId", "private-other"),
+        ("utteranceId", "../anything"),
+        ("sourceText", ""),
+        ("sourceText", "a" * 2001),
+        ("translatedText", "a" * 2001),
+        ("startOffsetMs", -1),
+        ("endOffsetMs", 60000),
+    ],
+)
 def test_reject_invalid_caption_payload(caption, field, value):
     with pytest.raises(ValueError):
         validate_caption({**caption, field: value})
@@ -82,7 +101,9 @@ def test_send_only_to_matching_other_human_and_reliable_final(caption):
         payload, args = pub.calls[0]
         assert json.loads(payload)["translatedText"] == ""
         assert args == {
-            "topic": TOPIC, "reliable": False, "destination_identities": ["human:guest"],
+            "topic": TOPIC,
+            "reliable": False,
+            "destination_identities": ["human:guest"],
         }
         final = {**caption, "translatedText": "Привет", "isFinal": True, "revision": 1}
         assert await publish_caption(room, final) == 1

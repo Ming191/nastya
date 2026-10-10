@@ -18,11 +18,15 @@ def token(identity: str, language: str = "") -> str:
         api.AccessToken(KEY, SECRET)
         .with_identity(identity)
         .with_ttl(timedelta(minutes=5))
-        .with_grants(api.VideoGrants(
-            room_join=True, room=ROOM,
-            can_subscribe=True, can_publish=False,
-            can_publish_data=identity == "interpreter",
-        ))
+        .with_grants(
+            api.VideoGrants(
+                room_join=True,
+                room=ROOM,
+                can_subscribe=True,
+                can_publish=False,
+                can_publish_data=identity == "interpreter",
+            )
+        )
     )
     if language:
         builder = builder.with_attributes({"sourceLanguage": language})
@@ -61,12 +65,20 @@ async def main() -> None:
         assert expected.issubset({p.identity for p in worker.remote_participants.values()})
 
         caption = {
-            "version": 1, "type": "caption.upsert", "roomId": ROOM,
-            "speakerId": "human:owner", "utteranceId": "human:owner:1:1",
-            "revision": 2, "sequence": 1,
-            "sourceLanguage": "vi", "targetLanguage": "ru",
-            "sourceText": "Xin chào", "translatedText": "Привет",
-            "isFinal": True, "startOffsetMs": 50, "endOffsetMs": 350,
+            "version": 1,
+            "type": "caption.upsert",
+            "roomId": ROOM,
+            "speakerId": "human:owner",
+            "utteranceId": "human:owner:1:1",
+            "revision": 2,
+            "sequence": 1,
+            "sourceLanguage": "vi",
+            "targetLanguage": "ru",
+            "sourceText": "Xin chào",
+            "translatedText": "Привет",
+            "isFinal": True,
+            "startOffsetMs": 50,
+            "endOffsetMs": 350,
         }
         assert await publish_caption(worker, caption) == 1
         for _ in range(50):
