@@ -21,10 +21,14 @@ from nastya_worker.voice_qa import (
 
 def event(**updates):
     data = {
-        "sampleId": "synthetic_01", "direction": "vi-ru",
-        "source": "synthetic", "outcome": "played",
-        "queueAgeMs": 240, "speechEndUnixMs": 100000,
-        "firstPlaybackUnixMs": 101250, "clockErrorBoundMs": 5,
+        "sampleId": "synthetic_01",
+        "direction": "vi-ru",
+        "source": "synthetic",
+        "outcome": "played",
+        "queueAgeMs": 240,
+        "speechEndUnixMs": 100000,
+        "firstPlaybackUnixMs": 101250,
+        "clockErrorBoundMs": 5,
     }
     data.update(updates)
     return data
@@ -79,12 +83,18 @@ def test_review_scores_require_real_human_entries_and_valid_ratings(tmp_path):
 
 
 def test_synthetic_session_cannot_pass_real_end_to_end_latency_gate():
-    report = summary([event(), event(sampleId="synthetic_02", outcome="timeout",
-                                     firstPlaybackUnixMs=None, queueAgeMs=800)])
+    report = summary(
+        [
+            event(),
+            event(
+                sampleId="synthetic_02", outcome="timeout", firstPlaybackUnixMs=None, queueAgeMs=800
+            ),
+        ]
+    )
     assert report["all"]["totalEvents"] == 2
     assert report["all"]["endOfSpeechToPlaybackP95Ms"] is None
     assert report["all"]["queueAgeP95Ms"] == 772
-    assert report["all"]["errorRate"] == .5
+    assert report["all"]["errorRate"] == 0.5
     assert report["acceptanceReadyForLatencyReview"] is False
 
 
@@ -92,11 +102,15 @@ def test_live_timing_requires_bounded_clock_error_and_two_directions():
     data = []
     for direction in ("ru-vi", "vi-ru"):
         for index in range(20):
-            data.append(event(
-                sampleId=f"{direction}_{index}", direction=direction, source="live",
-                firstPlaybackUnixMs=100200 + index * 25,
-                queueAgeMs=100 + index,
-            ))
+            data.append(
+                event(
+                    sampleId=f"{direction}_{index}",
+                    direction=direction,
+                    source="live",
+                    firstPlaybackUnixMs=100200 + index * 25,
+                    queueAgeMs=100 + index,
+                )
+            )
     report = summary(data)
     assert report["acceptanceReadyForLatencyReview"] is True
     assert report["all"]["validLiveLatencySamples"] == 40
@@ -126,9 +140,13 @@ def test_invalid_session_records_never_contain_text_or_invent_timestamps():
 
 def test_session_jsonl_size_and_input_validation(tmp_path):
     file = tmp_path / "trace.jsonl"
-    file.write_text(json.dumps(event()) + "\n" +
-                    json.dumps(event(sampleId="two", outcome="cancelled",
-                                     firstPlaybackUnixMs=None)) + "\n", encoding="utf-8")
+    file.write_text(
+        json.dumps(event())
+        + "\n"
+        + json.dumps(event(sampleId="two", outcome="cancelled", firstPlaybackUnixMs=None))
+        + "\n",
+        encoding="utf-8",
+    )
     assert len(load_events(file)) == 2
     file.write_text(json.dumps(event(content="forbidden")), encoding="utf-8")
     with pytest.raises(ValueError, match="trace fields"):
@@ -165,8 +183,10 @@ def test_opt_in_sampling_uses_fixed_pack_and_is_never_automatic(tmp_path, monkey
     assert len(records["cases"]) == 20
     assert records["humanReview"] == "NOT_REVIEWED"
     assert all(case["firstAudioLatencyMs"] == 7 for case in records["cases"])
-    assert all((tmp_path / "sample" / case["file"]).read_bytes() == b"\xff\xfbtest"
-               for case in records["cases"])
+    assert all(
+        (tmp_path / "sample" / case["file"]).read_bytes() == b"\xff\xfbtest"
+        for case in records["cases"]
+    )
     assert "Привет" not in json.dumps(records, ensure_ascii=False)
 
 

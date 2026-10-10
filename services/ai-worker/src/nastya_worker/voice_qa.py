@@ -21,10 +21,18 @@ DIRECTIONS = frozenset({"ru-vi", "vi-ru"})
 OUTCOMES = frozenset(
     {"played", "caption_only", "provider_error", "timeout", "autoplay_blocked", "cancelled"}
 )
-EVENT_FIELDS = frozenset({
-    "sampleId", "direction", "source", "outcome", "queueAgeMs",
-    "speechEndUnixMs", "firstPlaybackUnixMs", "clockErrorBoundMs",
-})
+EVENT_FIELDS = frozenset(
+    {
+        "sampleId",
+        "direction",
+        "source",
+        "outcome",
+        "queueAgeMs",
+        "speechEndUnixMs",
+        "firstPlaybackUnixMs",
+        "clockErrorBoundMs",
+    }
+)
 MAX_TRACE_LINES = 10000
 MAX_TRACE_BYTES = 2 * 1024 * 1024
 
@@ -34,8 +42,10 @@ def samples() -> list[dict[str, str]]:
     if data["version"] != 1 or len(data["samples"]) != 20:
         raise ValueError("the 20-case versioned RU/VI fixture is missing")
     cases: list[dict[str, str]] = data["samples"]
-    if (len({case["id"] for case in cases}) != 20 or
-            Counter(case["language"] for case in cases) != {"ru": 10, "vi": 10}):
+    if len({case["id"] for case in cases}) != 20 or Counter(case["language"] for case in cases) != {
+        "ru": 10,
+        "vi": 10,
+    }:
         raise ValueError("expected ten unique cases per language")
     if any(not 1 <= len(case["text"]) <= 500 for case in cases):
         raise ValueError("speech scripts must fit the bounded TTS interface")
@@ -60,12 +70,20 @@ def _exclusive_json(path: Path, payload: Any) -> None:
 def prepare(folder: Path) -> dict:
     target = _local_output(folder)
     cases = samples()
-    reviews = [{
-        "sampleId": case["id"], "language": case["language"],
-        "category": case["category"], "voice": DEFAULT_VOICE[case["language"]],
-        "clarity": None, "naturalness": None, "pronunciation": None,
-        "issues": [], "listeningDevice": None,
-    } for case in cases]
+    reviews = [
+        {
+            "sampleId": case["id"],
+            "language": case["language"],
+            "category": case["category"],
+            "voice": DEFAULT_VOICE[case["language"]],
+            "clarity": None,
+            "naturalness": None,
+            "pronunciation": None,
+            "issues": [],
+            "listeningDevice": None,
+        }
+        for case in cases
+    ]
     report = {
         "protocolVersion": 1,
         "type": "human-voice-quality-review",
@@ -89,20 +107,21 @@ async def live_samples(folder: Path, language: str) -> dict:
         raise ValueError("language must be ru, vi, or both")
     output = _local_output(folder)
     synth = settings.build()
-    cases = [
-        case for case in samples()
-        if language == "both" or case["language"] == language
-    ]
+    cases = [case for case in samples() if language == "both" or case["language"] == language]
     results: list[dict] = []
     for case in cases:
         lang = case["language"]
         voice = DEFAULT_VOICE[lang]
         outcome = await synth.synthesize(case["text"], lang, voice, case["id"])
         row: dict[str, Any] = {
-            "sampleId": case["id"], "language": lang, "voice": voice,
+            "sampleId": case["id"],
+            "language": lang,
+            "voice": voice,
             "status": "ok" if outcome.audio is not None else outcome.reason,
-            "firstAudioLatencyMs": None, "totalLatencyMs": None,
-            "audioBytes": 0, "file": None,
+            "firstAudioLatencyMs": None,
+            "totalLatencyMs": None,
+            "audioBytes": 0,
+            "file": None,
         }
         if outcome.audio is not None:
             file_name = case["id"] + ".mp3"
@@ -116,21 +135,35 @@ async def live_samples(folder: Path, language: str) -> dict:
                 file=file_name,
             )
         results.append(row)
-    _exclusive_json(output / "voice-synthesis-results.json", {
-        "protocolVersion": 1,
-        "source": "optional-real-Edge-service",
-        "provider": "edge-read-aloud-unofficial",
-        "cases": results, "humanReview": "NOT_REVIEWED",
-        "note": "First audio is the Edge client response, NOT end-of-speech to browser playback.",
-    })
+    _exclusive_json(
+        output / "voice-synthesis-results.json",
+        {
+            "protocolVersion": 1,
+            "source": "optional-real-Edge-service",
+            "provider": "edge-read-aloud-unofficial",
+            "cases": results,
+            "humanReview": "NOT_REVIEWED",
+            "note": (
+                "First audio is the Edge client response, NOT end-of-speech "
+                "to browser playback."
+            ),
+        },
+    )
     return {"attempted": len(results), "succeeded": sum(x["status"] == "ok" for x in results)}
 
 
-
-REVIEW_ISSUES = frozenset({
-    "clipped", "mispronunciation", "robotic", "odd_stress",
-    "wrong_language", "too_fast", "too_slow", "other",
-})
+REVIEW_ISSUES = frozenset(
+    {
+        "clipped",
+        "mispronunciation",
+        "robotic",
+        "odd_stress",
+        "wrong_language",
+        "too_fast",
+        "too_slow",
+        "other",
+    }
+)
 
 
 def review_summary(value: Any) -> dict:
@@ -162,8 +195,10 @@ def review_summary(value: Any) -> dict:
             raise ValueError("use known listening issue codes")
     complete = (
         len(seen) == 20
-        and all(all(type(case.get(x)) is int for x in
-                    ("clarity", "naturalness", "pronunciation")) for case in cases)
+        and all(
+            all(type(case.get(x)) is int for x in ("clarity", "naturalness", "pronunciation"))
+            for case in cases
+        )
         and isinstance(value.get("reviewer"), str)
         and len(value["reviewer"].strip()) >= 2
         and isinstance(value.get("reviewDate"), str)
@@ -173,20 +208,28 @@ def review_summary(value: Any) -> dict:
         subset = [c for c in cases if c["language"] == lang]
         by_language[lang] = {
             "cases": len(subset),
-            "rated": sum(all(type(c.get(key)) is int for key in
-                             ("clarity", "naturalness", "pronunciation")) for c in subset),
-            "meanClarity": round(statistics.mean(
-                c["clarity"] for c in subset if type(c.get("clarity")) is int
-            ), 2) if any(type(c.get("clarity")) is int for c in subset) else None,
-            "meanNaturalness": round(statistics.mean(
-                c["naturalness"] for c in subset if type(c.get("naturalness")) is int
-            ), 2) if any(type(c.get("naturalness")) is int for c in subset) else None,
-            "issues": dict(sorted(Counter(
-                issue for c in subset for issue in c["issues"]
-            ).items())),
+            "rated": sum(
+                all(type(c.get(key)) is int for key in ("clarity", "naturalness", "pronunciation"))
+                for c in subset
+            ),
+            "meanClarity": round(
+                statistics.mean(c["clarity"] for c in subset if type(c.get("clarity")) is int), 2
+            )
+            if any(type(c.get("clarity")) is int for c in subset)
+            else None,
+            "meanNaturalness": round(
+                statistics.mean(
+                    c["naturalness"] for c in subset if type(c.get("naturalness")) is int
+                ),
+                2,
+            )
+            if any(type(c.get("naturalness")) is int for c in subset)
+            else None,
+            "issues": dict(sorted(Counter(issue for c in subset for issue in c["issues"]).items())),
         }
     return {
-        "protocolVersion": 1, "humanReviewComplete": complete,
+        "protocolVersion": 1,
+        "humanReviewComplete": complete,
         "verifiedBySoftware": False,
         "byLanguage": by_language,
         "note": "Software validates rubric completeness, not reviewer identity or audio quality.",
@@ -203,13 +246,17 @@ def validate_event(event: Any) -> dict:
     """Allowlisted measurement metadata only. Never accepts raw speech or PII."""
     if not isinstance(event, dict) or set(event) != EVENT_FIELDS:
         raise ValueError("unknown or missing trace fields")
-    if not isinstance(event["sampleId"], str) or not (
-        1 <= len(event["sampleId"]) <= 64
-    ) or not all(ch.isalnum() or ch in "_-:" for ch in event["sampleId"]):
+    if (
+        not isinstance(event["sampleId"], str)
+        or not (1 <= len(event["sampleId"]) <= 64)
+        or not all(ch.isalnum() or ch in "_-:" for ch in event["sampleId"])
+    ):
         raise ValueError("invalid pseudonymous sampleId")
-    if event["direction"] not in DIRECTIONS or event["source"] not in (
-        "live", "synthetic"
-    ) or event["outcome"] not in OUTCOMES:
+    if (
+        event["direction"] not in DIRECTIONS
+        or event["source"] not in ("live", "synthetic")
+        or event["outcome"] not in OUTCOMES
+    ):
         raise ValueError("unknown trace direction, provenance or outcome")
     _num(event["queueAgeMs"], "queueAgeMs", 120000)
     _num(event["clockErrorBoundMs"], "clockErrorBoundMs", 60000)
@@ -223,9 +270,7 @@ def validate_event(event: Any) -> dict:
         event["outcome"] != "played" and first is not None
     ):
         raise ValueError("played events need both end and playback timestamps")
-    if end is not None and first is not None and (
-        first < end or first - end > 120000
-    ):
+    if end is not None and first is not None and (first < end or first - end > 120000):
         raise ValueError("invalid end-of-speech -> playback interval")
     return event
 
@@ -242,33 +287,36 @@ def percentile(values: list[float], fraction: float) -> float | None:
 
 def summary(rows: list[dict]) -> dict:
     events = [validate_event(x) for x in rows]
+
     def report(items: list[dict]) -> dict:
-        valid = [e for e in items if e["outcome"] == "played" and
-                 e["clockErrorBoundMs"] <= 50 and e["source"] == "live"]
-        latencies = [
-            float(e["firstPlaybackUnixMs"] - e["speechEndUnixMs"]) for e in valid
+        valid = [
+            e
+            for e in items
+            if e["outcome"] == "played" and e["clockErrorBoundMs"] <= 50 and e["source"] == "live"
         ]
+        latencies = [float(e["firstPlaybackUnixMs"] - e["speechEndUnixMs"]) for e in valid]
         ages = [float(e["queueAgeMs"]) for e in items]
-        errors = sum(e["outcome"] in {"provider_error", "timeout", "autoplay_blocked"}
-                     for e in items)
+        errors = sum(
+            e["outcome"] in {"provider_error", "timeout", "autoplay_blocked"} for e in items
+        )
         return {
             "totalEvents": len(items),
             "played": sum(e["outcome"] == "played" for e in items),
             "errors": errors,
             "errorRate": round(errors / len(items), 4) if items else None,
-            "queueAgeP50Ms": percentile(ages, .5),
-            "queueAgeP95Ms": percentile(ages, .95),
-            "endOfSpeechToPlaybackP50Ms": percentile(latencies, .5),
-            "endOfSpeechToPlaybackP95Ms": percentile(latencies, .95),
+            "queueAgeP50Ms": percentile(ages, 0.5),
+            "queueAgeP95Ms": percentile(ages, 0.95),
+            "endOfSpeechToPlaybackP50Ms": percentile(latencies, 0.5),
+            "endOfSpeechToPlaybackP95Ms": percentile(latencies, 0.95),
             "validLiveLatencySamples": len(latencies),
             "clockBoundMaxMs": 50,
         }
+
     distinct = len({e["sampleId"] for e in events})
     accepted = (
         all(e["source"] == "live" and e["clockErrorBoundMs"] <= 50 for e in events)
         and all(
-            sum(e["direction"] == direction and e["outcome"] == "played"
-                for e in events) >= 20
+            sum(e["direction"] == direction and e["outcome"] == "played" for e in events) >= 20
             for direction in DIRECTIONS
         )
         and distinct >= 20
@@ -277,9 +325,10 @@ def summary(rows: list[dict]) -> dict:
         "protocolVersion": 1,
         "provenance": "session metadata supplied externally; no implicit model/RTC measurement",
         "all": report(events),
-        "byDirection": {direction: report([
-            e for e in events if e["direction"] == direction
-        ]) for direction in sorted(DIRECTIONS)},
+        "byDirection": {
+            direction: report([e for e in events if e["direction"] == direction])
+            for direction in sorted(DIRECTIONS)
+        },
         "acceptanceReadyForLatencyReview": bool(events) and accepted,
         "reason": (
             "True only with >=20 live playbacks per direction, clock bound <=50 ms, "

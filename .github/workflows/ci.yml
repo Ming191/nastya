@@ -34,15 +34,6 @@ jobs:
         with:
           python-version-file: services/ai-worker/.python-version
       - run: python -m pip install -e '.[dev,rtc,tts]'
-      - name: Normalize voice QA files (temporary)
-        run: |
-          ruff check --fix src/nastya_worker/voice_qa.py tests/test_voice_qa.py
-          ruff format src/nastya_worker/voice_qa.py tests/test_voice_qa.py
-          for file in src/nastya_worker/voice_qa.py tests/test_voice_qa.py; do
-            echo "FMT_FILE_START:$file"
-            base64 "$file" | sed 's/^/FMT64:/'
-            echo "FMT_FILE_END:$file"
-          done
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
