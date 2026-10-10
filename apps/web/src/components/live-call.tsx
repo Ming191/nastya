@@ -2,7 +2,7 @@
 
 import {
   Room, RoomEvent, Track,
-  type LocalVideoTrack, type RemoteAudioTrack, type RemoteVideoTrack,
+  type LocalVideoTrack, type LocalAudioTrack, type RemoteAudioTrack, type RemoteVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getMediaError, isHumanIdentity, languageLabel, type ParticipantRole, type SpokenLanguage } from "../lib/call";
@@ -38,7 +38,7 @@ function VideoTile({
   </article>;
 }
 
-function RemoteAudio({ track, volume }: { track?: RemoteAudioTrack; volume: number }) {
+function RemoteAudio({ track, volume }: { track?: LocalAudioTrack | RemoteAudioTrack; volume: number }) {
   const ref = useRef<HTMLAudioElement>(null);
   useEffect(() => {
     const audio = ref.current;
