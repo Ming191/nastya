@@ -62,7 +62,9 @@ def validate_caption(event: Any) -> dict:
     state = event.get("translationState")
     if state is not None and state not in ("pending", "translated", "source_only"):
         raise ValueError("invalid translation state")
-    if state == "pending" and event["isFinal"] or state in ("translated", "source_only") and not event["isFinal"]:
+    if (state == "pending" and event["isFinal"]) or (
+        state in ("translated", "source_only") and not event["isFinal"]
+    ):
         raise ValueError("inconsistent translation state")
     if type(event["isFinal"]) is not bool or (event["isFinal"] and not event["translatedText"]):
         raise ValueError("invalid caption final flag")
