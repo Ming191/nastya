@@ -18,9 +18,11 @@ export default function RoomEntryPage() {
       const fragment = new URLSearchParams(url.hash.slice(1));
       const inviteFromLink = fragment.get("invite");
       if (inviteFromLink) {
+        window.sessionStorage.setItem("nastya:guest:" + roomId, inviteFromLink);
         window.history.replaceState(null, "", url.pathname + url.search);
       }
       const invite = inviteFromLink ??
+        window.sessionStorage.getItem("nastya:guest:" + roomId) ??
         window.sessionStorage.getItem("nastya:owner:" + roomId);
       if (!invite) throw new Error("Missing room invitation");
       const response = await fetch("/api/rooms/join", {
