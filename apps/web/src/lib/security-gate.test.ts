@@ -161,7 +161,7 @@ test("role reservation prevents concurrent replacement before JWT minting", asyn
   const renewed = await join(winner);
   assert.equal(renewed.participantRole, "guest");
   const jwt = JSON.parse(Buffer.from(renewed.participantToken.split(".")[1], "base64url").toString());
-  assert.deepEqual(jwt.video.canPublishSources, [1, 2]);
+  assert.deepEqual(jwt.video.canPublishSources, ["camera", "microphone"]);
   assert.equal(jwt.video.canPublishData, false);
   assert.equal(jwt.video.roomCreate, false);
 });
