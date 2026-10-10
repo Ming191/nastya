@@ -5,6 +5,7 @@ import {
   type LocalVideoTrack, type LocalAudioTrack, type RemoteAudioTrack, type RemoteVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CaptionPanel } from "./caption-panel";
 import { getMediaError, isHumanIdentity, languageLabel, type ParticipantRole, type SpokenLanguage } from "../lib/call";
 import { disconnectRoomOnce, nextConnection, nextPeerPresence, type CallConnection, type PeerPresence } from "../lib/call-lifecycle";
 
@@ -283,6 +284,7 @@ export function LiveCall({
       />
     </div>
     <RemoteAudio track={peerMic?.audioTrack} volume={volume} />
+    <CaptionPanel room={room} language={language} />
     {!peer && <p className="hint" role="status">{peerPresence === "left"
       ? "The other person left the call. You can wait for them to return or leave."
       : "Waiting for the other person to join using the invitation link."}</p>}

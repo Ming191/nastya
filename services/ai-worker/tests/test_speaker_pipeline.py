@@ -197,7 +197,7 @@ def test_worker_token_subscribes_but_can_never_publish():
     assert claims.video.room == "nastya_" + "a" * 32
     assert claims.video.can_subscribe is True
     assert claims.video.can_publish is False
-    assert claims.video.can_publish_data is False
+    assert claims.video.can_publish_data is True
     assert not claims.video.room_admin
 
 

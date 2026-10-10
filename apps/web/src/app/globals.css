@@ -59,3 +59,17 @@ section { border: 1px solid #43465a; border-radius: 12px; padding: 20px; margin-
   .device-panel { grid-template-columns: minmax(0, 1fr); }
   .video-tile.self { max-width: 60%; }
 }
+
+/* In-memory translated caption overlay and conversation strip. */
+.captions-panel { margin-top: 18px; border-color: #636985; }
+.captions-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.captions-header h2 { margin: 0 0 4px; font-size: 1.15rem; }
+.captions-header p { margin: 0; font-size: .88rem; }
+.caption-overlay { background: #090b13; border: 1px solid #606d94; border-radius: 12px; padding: 18px 20px; min-height: 88px; margin: 18px 0; }
+.caption-overlay strong { color: #e4eaff; font-size: .82rem; }
+.caption-overlay p { font-size: clamp(1.08rem, 2vw, 1.45rem); font-weight: 650; color: #fff; line-height: 1.45; margin: 8px 0 0; max-width: unset; overflow-wrap: anywhere; }
+.caption-history { display: flex; flex-direction: column; gap: 10px; max-height: 270px; overflow-y: auto; }
+.caption-entry { border-left: 3px solid #829bd9; padding: 10px 14px; border-radius: 4px; background: #1e2436; }
+.caption-entry.partial { border-left-color: #cfbd80; }
+.caption-entry-heading { display: flex; justify-content: space-between; gap: 10px; color: #bac6eb; font-size: .85rem; }
+.caption-entry p { margin: 6px 0 0; max-width: unset; color: #f5f6fb; overflow-wrap: anywhere; }

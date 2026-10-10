@@ -49,7 +49,7 @@ def worker_token(room_id: str, keys: dict[str, str]) -> str:
                 room=room_id,
                 can_subscribe=True,
                 can_publish=False,
-                can_publish_data=False,
+                can_publish_data=True,
                 can_update_own_metadata=False,
             )
         )
