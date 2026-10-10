@@ -184,7 +184,10 @@ def test_opt_in_experiment_writes_only_synthetic_samples(tmp_path, monkeypatch):
     assert report["human_review"] == "pending"
     assert report["intelligibility_verified"] is False
     assert all(row["first_audio_latency_ms"] == 2.5 for row in report["samples"])
-    assert all((tmp_path / row["file"]).read_bytes() == b"\xff\xfbtest" for row in report["samples"])
+    assert all(
+        (tmp_path / row["file"]).read_bytes() == b"\xff\xfbtest"
+        for row in report["samples"]
+    )
     assert "Привет" not in json.dumps(report, ensure_ascii=False)
 
 

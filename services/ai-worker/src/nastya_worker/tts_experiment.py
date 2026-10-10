@@ -80,7 +80,9 @@ async def experiment(language: str, voice: str, folder: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Opt-in offline review of Edge TTS experiment")
-    parser.add_argument("--live", action="store_true", help="explicitly send synthetic samples to Edge")
+    parser.add_argument(
+        "--live", action="store_true", help="explicitly send synthetic samples to Edge"
+    )
     parser.add_argument("--language", choices=("ru", "vi"), required=True)
     parser.add_argument("--voice", default="")
     parser.add_argument("--output-dir", type=Path, required=True)
