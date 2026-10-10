@@ -97,3 +97,44 @@ test("invalid or forged invitation cannot join a room", async ({ browser }) => {
     await pair.close();
   }
 });
+
+
+test("caption-only call is usable with voice muted, user gesture toggles voice and leave cleans UI",
+  async ({ browser }) => {
+    const pair = await createCallPair(browser);
+    try {
+      await joinCall(pair.owner, "vi");
+      await joinCall(pair.guest, "ru");
+      await Promise.all([waitForRemoteMedia(pair.owner), waitForRemoteMedia(pair.guest)]);
+
+      const voice = pair.guest.getByRole("region", { name: "Translated voice settings" });
+      await expect(voice.getByRole("button", { name: "Enable translated voice" })).toBeVisible();
+      await expect(voice.getByText("Voice: off.", { exact: false })).toBeVisible();
+      await expect(pair.guest.getByRole("button", { name: "Mute mic" })).toBeVisible();
+      await expect(pair.guest.getByRole("button", { name: "Hide captions" })).toBeVisible();
+      await expect(pair.guest.getByText("Translated captions will appear", { exact: false }))
+        .toBeVisible();
+
+      // Browser user gesture unlock; source mic and captions must remain independent.
+      await voice.getByRole("button", { name: "Enable translated voice" }).click();
+      await expect(voice.getByRole("button", { name: "Mute translated voice" })).toBeVisible();
+      await voice.getByLabel("Translated voice speed").selectOption("1.15");
+      await expect(voice.getByLabel("Translated voice speed")).toHaveValue("1.15");
+      await voice.getByRole("button", { name: "Mute translated voice" }).click();
+      await expect(voice.getByText("Voice: off.", { exact: false })).toBeVisible();
+      await expect(pair.guest.getByRole("button", { name: "Mute mic" })).toBeVisible();
+
+      await pair.guest.getByRole("button", { name: "Hide captions" }).click();
+      await expect(pair.guest.getByRole("button", { name: "Show captions" })).toBeVisible();
+      await pair.guest.getByRole("button", { name: "Show captions" }).click();
+      await expect(pair.guest.getByText("Translated captions will appear", { exact: false }))
+        .toBeVisible();
+      await pair.guest.getByRole("button", { name: "Leave call" }).click();
+      await expect(pair.guest.getByRole("button", { name: "Create a private room" }))
+        .toBeVisible();
+      await expect(pair.guest.getByRole("region", { name: "Translated voice settings" }))
+        .toHaveCount(0);
+    } finally {
+      await pair.close();
+    }
+  });

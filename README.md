@@ -241,3 +241,44 @@ occurs without both the opt-in feature flag and the explicit `--live` option.
 The unofficial Edge Read Aloud endpoint is not a supported production API;
 confirm usage permissions and availability before deployment.
 
+## Voice quality evaluation
+
+You can prepare a bilingual 20-sentence listening rubric without connecting to
+a speech service. From \`services/ai-worker\`:
+
+```bash
+python -m nastya_worker.voice_qa prepare --output-dir /tmp/nastya-voice-qa
+```
+
+To generate experimental speech for 10 original test sentences per language,
+install the optional TTS provider and explicitly enable network synthesis:
+
+```bash
+python -m pip install -e '.[tts]'
+export NASTYA_TTS_ENABLED=true
+python -m nastya_worker.voice_qa live --live --language both   --output-dir /tmp/nastya-voice-live
+```
+
+This writes local MP3 clips and request-timing JSON. It never takes private
+conversation transcripts from your call. Audio quality must be scored by human
+Russian/Vietnamese listeners using the blank review form. After filling scores
+and a reviewer/date, validate the scores with:
+
+```bash
+python -m nastya_worker.voice_qa review   --review-json /tmp/nastya-voice-qa/voice-review-blank.json   --output-dir /tmp/nastya-voice-review-report
+```
+
+To summarize an external privacy-safe *real session* timing trace:
+
+```bash
+python -m nastya_worker.voice_qa summarize   --session-jsonl /path/to/voice-session-events.jsonl   --output-dir /tmp/nastya-voice-session-report
+```
+
+The JSONL trace consists only of \`sampleId\`, \`direction\` (\`ru-vi\` or
+\`vi-ru\`), \`source\` (\`live\` or \`synthetic\`), \`outcome\`,
+\`queueAgeMs\`, \`speechEndUnixMs\`, \`firstPlaybackUnixMs\`, and
+\`clockErrorBoundMs\`. Timestamp fields can be null when playback never
+starts. Browser/server clocks must have a documented synchronisation error
+bound; synthetic measurements never satisfy real-session acceptance.
+Current production calls do not export such traces automatically.
+

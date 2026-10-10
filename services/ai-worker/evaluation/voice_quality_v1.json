@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "provenance": "original synthetic conversational scripts; no user speech",
+  "purpose": "RU-VI 10 utterances per language listening rubric",
+  "samples": [
+    {
+      "id": "ru-01",
+      "language": "ru",
+      "text": "Привет! Как прошёл твой день?",
+      "category": "greeting"
+    },
+    {
+      "id": "ru-02",
+      "language": "ru",
+      "text": "Я не могу разговаривать сейчас, перезвоню позже.",
+      "category": "negation"
+    },
+    {
+      "id": "ru-03",
+      "language": "ru",
+      "text": "Встреча начнётся завтра в 19:30.",
+      "category": "numbers"
+    },
+    {
+      "id": "ru-04",
+      "language": "ru",
+      "text": "Пожалуйста, говори чуть медленнее, я не успеваю.",
+      "category": "speed"
+    },
+    {
+      "id": "ru-05",
+      "language": "ru",
+      "text": "Мне нужен перевод с русского на вьетнамский.",
+      "category": "translation"
+    },
+    {
+      "id": "ru-06",
+      "language": "ru",
+      "text": "Ты слышишь меня? Звук иногда пропадает.",
+      "category": "network"
+    },
+    {
+      "id": "ru-07",
+      "language": "ru",
+      "text": "Подожди секунду, я хотел спросить ещё кое-что.",
+      "category": "interruption"
+    },
+    {
+      "id": "ru-08",
+      "language": "ru",
+      "text": "Сегодня в Ханое тридцать два градуса тепла.",
+      "category": "place"
+    },
+    {
+      "id": "ru-09",
+      "language": "ru",
+      "text": "Я согласен, но сначала нужно проверить расписание.",
+      "category": "contrast"
+    },
+    {
+      "id": "ru-10",
+      "language": "ru",
+      "text": "Большое спасибо за помощь. До скорой встречи!",
+      "category": "farewell"
+    },
+    {
+      "id": "vi-01",
+      "language": "vi",
+      "text": "Chào bạn! Hôm nay công việc thế nào?",
+      "category": "greeting"
+    },
+    {
+      "id": "vi-02",
+      "language": "vi",
+      "text": "Mình không thể gọi ngay bây giờ, lát nữa nhé.",
+      "category": "negation"
+    },
+    {
+      "id": "vi-03",
+      "language": "vi",
+      "text": "Chúng ta gặp nhau lúc 19 giờ 30 phút ngày mai.",
+      "category": "numbers"
+    },
+    {
+      "id": "vi-04",
+      "language": "vi",
+      "text": "Bạn nói chậm hơn một chút được không?",
+      "category": "speed"
+    },
+    {
+      "id": "vi-05",
+      "language": "vi",
+      "text": "Mình cần dịch từ tiếng Việt sang tiếng Nga.",
+      "category": "translation"
+    },
+    {
+      "id": "vi-06",
+      "language": "vi",
+      "text": "Bạn còn nghe rõ không? Mạng hơi chập chờn.",
+      "category": "network"
+    },
+    {
+      "id": "vi-07",
+      "language": "vi",
+      "text": "Khoan đã, mình muốn hỏi thêm một điều nữa.",
+      "category": "interruption"
+    },
+    {
+      "id": "vi-08",
+      "language": "vi",
+      "text": "Hôm nay ở Hà Nội nhiệt độ khoảng ba mươi hai độ.",
+      "category": "place"
+    },
+    {
+      "id": "vi-09",
+      "language": "vi",
+      "text": "Mình đồng ý, nhưng cần kiểm tra lịch trước đã.",
+      "category": "contrast"
+    },
+    {
+      "id": "vi-10",
+      "language": "vi",
+      "text": "Cảm ơn bạn rất nhiều. Hẹn gặp lại nhé!",
+      "category": "farewell"
+    }
+  ]
+}
