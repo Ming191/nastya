@@ -41,3 +41,7 @@ recordings/
 .DS_Store
 .vscode/
 .idea/
+
+# Synthetic Playwright test artifacts (CI uploads reports)
+playwright-report/
+test-results/

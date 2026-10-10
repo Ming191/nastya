@@ -122,3 +122,21 @@ Keep owner invitations private. Guest links are bearer credentials: anyone with 
 After configuring LiveKit under `apps/web/.env.local`, run `npm ci && npm run dev:web`. Create a room at http://localhost:3000, share the guest invitation link, and open **Continue as room owner**. On both browsers, choose a spoken language and select **Join video call**. Allow camera and microphone access when prompted. Both participants can mute/unmute, enable/disable camera, select input/output devices where supported, adjust the remote volume, copy the guest invitation, and leave the room.
 
 Use HTTPS for remote/browser deployments so device permissions and WebRTC work reliably. If autoplay is blocked, press **Enable incoming sound**. If no camera or microphone is available, the other media stream can still be used. Speaker selection depends on browser support. LiveKit credentials are required for actual rooms and media; the localhost model mock does not replace LiveKit.
+
+## Local RTC browser tests
+
+Install npm dependencies, Chromium and browser prerequisites, then start a **local-only** LiveKit server in a separate terminal:
+
+```bash
+docker run --rm --network host livekit/livekit-server:v1.13.7 --dev --bind 0.0.0.0
+```
+
+Run the synthetic two-browser WebRTC suite from the repository root:
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+npm run test:rtc
+```
+
+The test runner starts the Next.js app with local LiveKit development credentials. The isolated browser sessions use fake camera/microphone devices. Inspect the Playwright HTML report and attached redacted RTC statistics in `apps/web/playwright-report/`. These tests need Docker and a browser, not a cloud account or AI model. They do not measure cross-country latency or prove TURN relay availability.
