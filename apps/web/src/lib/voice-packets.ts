@@ -114,7 +114,7 @@ export class VoiceAssembler {
         return { type: "stop", utteranceId: old };
       }
     }
-    if (caption.isFinal) this.approve(key, caption.sequence);
+    if (caption.isFinal && caption.translationState !== "source_only") this.approve(key, caption.sequence);
     return null;
   }
 
