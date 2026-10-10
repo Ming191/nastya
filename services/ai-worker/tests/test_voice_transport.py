@@ -4,8 +4,8 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from nastya_worker.providers.tts import OptionalTts, SynthesizedSpeech
 
+from nastya_worker.providers.tts import OptionalTts, SynthesizedSpeech
 from nastya_worker.voice_transport import (
     CHUNK_BYTES,
     MAX_AUDIO_BYTES,

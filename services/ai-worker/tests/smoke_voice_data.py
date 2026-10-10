@@ -5,8 +5,8 @@ import json
 from datetime import timedelta
 
 from livekit import api, rtc
-from nastya_worker.providers.tts import SynthesizedSpeech
 
+from nastya_worker.providers.tts import SynthesizedSpeech
 from nastya_worker.voice_transport import VOICE_TOPIC, cancel_voice, publish_voice
 
 URL, ROOM = "ws://127.0.0.1:7880", "nastya_" + "e" * 32
