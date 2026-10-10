@@ -24,9 +24,7 @@ def edit_distance(a: Sequence[str], b: Sequence[str]) -> int:
     for i, left in enumerate(a, 1):
         current = [i]
         for j, right in enumerate(b, 1):
-            current.append(
-                min(current[-1] + 1, previous[j] + 1, previous[j - 1] + (left != right))
-            )
+            current.append(min(current[-1] + 1, previous[j] + 1, previous[j - 1] + (left != right)))
         previous = current
     return previous[-1]
 
@@ -55,8 +53,4 @@ def ratio(errors: int, denominator: int) -> float | None:
 
 
 def finite_nonnegative(value: object) -> bool:
-    return (
-        type(value) in (int, float)
-        and math.isfinite(value)
-        and value >= 0
-    )
+    return type(value) in (int, float) and math.isfinite(value) and value >= 0

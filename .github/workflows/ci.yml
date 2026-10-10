@@ -34,14 +34,6 @@ jobs:
         with:
           python-version-file: services/ai-worker/.python-version
       - run: python -m pip install -e '.[dev]'
-      - name: Format benchmark sources for review (temporary)
-        run: |
-          ruff format src/nastya_worker/benchmark_metrics.py src/nastya_worker/audio_manifest.py src/nastya_worker/remote_benchmark.py src/nastya_worker/benchmark_remote.py tests/test_remote_benchmark.py
-          for file in src/nastya_worker/benchmark_metrics.py src/nastya_worker/audio_manifest.py src/nastya_worker/remote_benchmark.py src/nastya_worker/benchmark_remote.py tests/test_remote_benchmark.py; do
-            echo "FMT_FILE_START:$file"
-            base64 "$file" | sed 's/^/FMT64:/'
-            echo "FMT_FILE_END:$file"
-          done
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q

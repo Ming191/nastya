@@ -6,10 +6,8 @@ memory, streaming partials and server compute settings are never inferred.
 
 import asyncio
 import hashlib
-import json
 import time
 from collections import defaultdict
-from pathlib import Path
 
 import httpx
 
@@ -47,13 +45,17 @@ async def _execute(requests: list[tuple[str, object]], concurrency: int, action)
             try:
                 result = await action(value)
                 return {
-                    "id": uid, "result": result, "error": None,
+                    "id": uid,
+                    "result": result,
+                    "error": None,
                     "queue_ms": (acquired - queued_at) * 1000,
                     "latency_ms": (time.perf_counter() - acquired) * 1000,
                 }
             except (InferenceError, ValueError, httpx.HTTPError, EvaluationError):
                 return {
-                    "id": uid, "result": None, "error": "INFERENCE_FAILED",
+                    "id": uid,
+                    "result": None,
+                    "error": "INFERENCE_FAILED",
                     "queue_ms": (acquired - queued_at) * 1000,
                     "latency_ms": (time.perf_counter() - acquired) * 1000,
                 }
@@ -104,17 +106,19 @@ async def benchmark_mt(
         for model in models:
             provider = HttpTranslator(client, endpoint, api_key, model)
             for row in rows[:warmup]:
-                await provider.translate(row["source_text"], row["source_language"],
-                                         row["target_language"])
+                await api.translate(
+                    row["source_text"], row["source_language"], row["target_language"]
+                )
             inputs = [
-                (f'{row["id"]}:{round_id}', row)
-                for round_id in range(rounds) for row in rows
+                (f"{row['id']}:{round_id}", row) for round_id in range(rounds) for row in rows
             ]
 
-            async def translate(row: dict):
-                return (await provider.translate(
-                    row["source_text"], row["source_language"], row["target_language"]
-                )).text
+            async def translate(row: dict, api=provider):
+                return (
+                    await provider.translate(
+                        row["source_text"], row["source_language"], row["target_language"]
+                    )
+                ).text
 
             samples, elapsed = await _execute(inputs, concurrency, translate)
             by_id: dict[str, list[dict]] = defaultdict(list)
@@ -123,13 +127,17 @@ async def benchmark_mt(
             model_predictions = []
             for row in rows:
                 valid = [item for item in by_id[row["id"]] if item["error"] is None]
-                model_predictions.append({
-                    "id": row["id"],
-                    "hypothesis": valid[0]["result"] if valid else "",
-                    "latency_ms": round(
-                        sum(item["latency_ms"] for item in valid) / len(valid), 2
-                    ) if valid else None,
-                })
+                model_predictions.append(
+                    {
+                        "id": row["id"],
+                        "hypothesis": valid[0]["result"] if valid else "",
+                        "latency_ms": round(
+                            sum(item["latency_ms"] for item in valid) / len(valid), 2
+                        )
+                        if valid
+                        else None,
+                    }
+                )
             predictions[model] = model_predictions
             count = {r["id"]: r for r in model_predictions}
             summary = _model_summary(samples, elapsed, concurrency)
@@ -159,23 +167,25 @@ async def benchmark_stt(
         for model in models:
             provider = HttpSpeechRecognizer(client, endpoint, api_key, model)
             for sample in samples[:warmup]:
-                await provider.transcribe(sample["_path"].read_bytes(), sample["language"])
-            inputs = [
-                (f'{s["id"]}:{round_id}', s)
-                for round_id in range(rounds) for s in samples
-            ]
+                await api.transcribe(sample["_path"].read_bytes(), sample["language"])
+            inputs = [(f"{s['id']}:{round_id}", s) for round_id in range(rounds) for s in samples]
 
-            async def transcribe(sample: dict):
-                return (await provider.transcribe(
-                    sample["_path"].read_bytes(), sample["language"]
-                )).text
+            async def transcribe(sample: dict, api=provider):
+                return (
+                    await provider.transcribe(sample["_path"].read_bytes(), sample["language"])
+                ).text
 
             records, elapsed = await _execute(inputs, concurrency, transcribe)
-            count = defaultdict(lambda: {
-                "word_errors": 0, "reference_words": 0,
-                "character_errors": 0, "reference_characters": 0,
-                "successes": 0, "failures": 0,
-            })
+            count = defaultdict(
+                lambda: {
+                    "word_errors": 0,
+                    "reference_words": 0,
+                    "character_errors": 0,
+                    "reference_characters": 0,
+                    "successes": 0,
+                    "failures": 0,
+                }
+            )
             for record, (_, sample) in zip(records, inputs, strict=True):
                 group = count[sample["language"]]
                 if record["error"] is not None:
@@ -194,8 +204,9 @@ async def benchmark_stt(
                     "wer_whitespace_proxy": ratio(
                         count[lang]["word_errors"], count[lang]["reference_words"]
                     ),
-                    "cer": ratio(count[lang]["character_errors"],
-                                 count[lang]["reference_characters"]),
+                    "cer": ratio(
+                        count[lang]["character_errors"], count[lang]["reference_characters"]
+                    ),
                 }
                 for lang in ("vi", "ru")
             }
@@ -218,17 +229,24 @@ async def benchmark_vad(
             data = {"model": model}
             headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
             try:
-                payload = await _post(client, endpoint, data=data, headers=headers,
-                                      files={"file": ("speech.wav", sample["_path"].read_bytes(),
-                                                      "audio/wav")})
+                payload = await _post(
+                    client,
+                    endpoint,
+                    data=data,
+                    headers=headers,
+                    files={"file": ("speech.wav", sample["_path"].read_bytes(), "audio/wav")},
+                )
                 predicted = validate_vad_response(payload, sample["duration_ms"])
                 metrics = boundary_error_ms(sample["speech_segments_ms"], predicted)
                 measures.append({"scenario": sample["scenario"], **metrics, "failed": False})
             except (InferenceError, EvaluationError):
                 measures.append({"scenario": sample["scenario"], "failed": True})
     valid = [item for item in measures if not item["failed"]]
-    errors = [item["mean_boundary_error_ms"] for item in valid
-              if item["mean_boundary_error_ms"] is not None]
+    errors = [
+        item["mean_boundary_error_ms"]
+        for item in valid
+        if item["mean_boundary_error_ms"] is not None
+    ]
     return {
         "status": "measured_api" if valid else "all_failed",
         "samples": len(samples),
@@ -236,7 +254,7 @@ async def benchmark_vad(
         "failed": len(measures) - len(valid),
         "missed_segments": sum(m["missed_segments"] for m in valid),
         "false_positive_segments": sum(m["false_positive_segments"] for m in valid),
-        "mean_boundary_error_ms": round(sum(errors)/len(errors), 2) if errors else None,
+        "mean_boundary_error_ms": round(sum(errors) / len(errors), 2) if errors else None,
         "by_scenario": {
             s: {
                 "samples": sum(m["scenario"] == s for m in measures),

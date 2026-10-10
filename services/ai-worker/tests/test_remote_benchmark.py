@@ -26,16 +26,18 @@ def create_audio(tmp_path: Path, language="vi", scenario="speech") -> Path:
         stream.writeframes(bytes(16000))
     payload = {
         "schema_version": 1,
-        "samples": [{
-            "id": "synthetic_001",
-            "language": language,
-            "audio_path": "sample.wav",
-            "transcript": "xin chào" if scenario == "speech" else "",
-            "speech_segments_ms": [[100, 350]] if scenario == "speech" else [],
-            "scenario": scenario,
-            "provenance": "synthetic",
-            "rights_basis": "locally generated PCM silence/noise for test only",
-        }],
+        "samples": [
+            {
+                "id": "synthetic_001",
+                "language": language,
+                "audio_path": "sample.wav",
+                "transcript": "xin chào" if scenario == "speech" else "",
+                "speech_segments_ms": [[100, 350]] if scenario == "speech" else [],
+                "scenario": scenario,
+                "provenance": "synthetic",
+                "rights_basis": "locally generated PCM silence/noise for test only",
+            }
+        ],
     }
     path = tmp_path / "fixtures.json"
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -68,7 +70,9 @@ def test_audio_manifest_does_not_infer_speech_from_non_speech(tmp_path):
 
 def test_vad_boundaries_and_false_positives_are_explicit():
     assert boundary_error_ms([[100, 300]], [[110, 290]]) == {
-        "missed_segments": 0, "false_positive_segments": 0, "mean_boundary_error_ms": 10.0,
+        "missed_segments": 0,
+        "false_positive_segments": 0,
+        "mean_boundary_error_ms": 10.0,
     }
     assert boundary_error_ms([], [[0, 200]])["false_positive_segments"] == 1
     assert boundary_error_ms([[200, 400]], [])["missed_segments"] == 1
@@ -88,6 +92,7 @@ def test_unicode_normalization_and_token_error_counts():
 def test_two_model_translation_comparison_uses_all_120_sources_with_bounded_concurrency():
     _, rows = load_corpus()
     requests = []
+
     def respond(req: httpx.Request):
         payload = json.loads(req.content)
         requests.append(payload)
@@ -96,10 +101,18 @@ def test_two_model_translation_comparison_uses_all_120_sources_with_bounded_conc
         assert payload["source_language"] != payload["target_language"]
         return httpx.Response(200, json={"translated_text": "synthetic-mock-not-translation"})
 
-    report, preds = asyncio.run(benchmark_mt(
-        rows, ["nllb-small-test", "nllb-large-test"], "https://models.test/v1/translate",
-        "", 2, concurrency=3, rounds=1, transport=httpx.MockTransport(respond),
-    ))
+    report, preds = asyncio.run(
+        benchmark_mt(
+            rows,
+            ["nllb-small-test", "nllb-large-test"],
+            "https://models.test/v1/translate",
+            "",
+            2,
+            concurrency=3,
+            rounds=1,
+            transport=httpx.MockTransport(respond),
+        )
+    )
     assert len(requests) == 240
     assert len(preds["nllb-small-test"]) == len(preds["nllb-large-test"]) == 120
     assert set(report["results"]) == {"nllb-small-test", "nllb-large-test"}
@@ -116,22 +129,33 @@ def test_two_model_translation_comparison_uses_all_120_sources_with_bounded_conc
 
 def test_stt_audio_batch_and_vad_mock_are_independent(tmp_path):
     fixture = load_audio_manifest(create_audio(tmp_path))
+
     def respond(req: httpx.Request):
         assert req.headers.get("authorization") == "Bearer test-secret"
-        assert b'speech.wav' in req.content
+        assert b"speech.wav" in req.content
         if req.url.path == "/v1/audio/transcriptions":
             return httpx.Response(200, json={"text": "xin chào"})
         if req.url.path == "/v1/vad":
-            return httpx.Response(200, json={
-                "segments": [{"start_ms": 100, "end_ms": 350}],
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "segments": [{"start_ms": 100, "end_ms": 350}],
+                },
+            )
         return httpx.Response(404)
 
     transport = httpx.MockTransport(respond)
-    stt = asyncio.run(benchmark_stt(
-        fixture, ["whisper-tiny-test", "whisper-large-test"], "https://models.test/v1/audio/transcriptions",
-        "test-secret", 2, concurrency=2, transport=transport,
-    ))
+    stt = asyncio.run(
+        benchmark_stt(
+            fixture,
+            ["whisper-tiny-test", "whisper-large-test"],
+            "https://models.test/v1/audio/transcriptions",
+            "test-secret",
+            2,
+            concurrency=2,
+            transport=transport,
+        )
+    )
     assert stt["fixture_count"] == 1
     for result in stt["results"].values():
         assert result["error_rates_by_language"]["vi"]["cer"] == 0
@@ -139,10 +163,16 @@ def test_stt_audio_batch_and_vad_mock_are_independent(tmp_path):
         assert result["error_rates_by_language"]["ru"]["successful"] == 0
         assert result["segmentation"] == "not_evaluated_without_vad_endpoint"
         assert result["first_partial_latency_ms"] is None
-    vad = asyncio.run(benchmark_vad(
-        fixture, "https://models.test/v1/vad", "test-secret", 2, "vad-test",
-        transport=transport,
-    ))
+    vad = asyncio.run(
+        benchmark_vad(
+            fixture,
+            "https://models.test/v1/vad",
+            "test-secret",
+            2,
+            "vad-test",
+            transport=transport,
+        )
+    )
     assert vad["status"] == "measured_api"
     assert vad["missed_segments"] == 0
     assert vad["false_positive_segments"] == 0
@@ -151,13 +181,20 @@ def test_stt_audio_batch_and_vad_mock_are_independent(tmp_path):
 
 def test_backend_failure_does_not_leak_remote_message_or_fake_throughput(tmp_path):
     fixtures = load_audio_manifest(create_audio(tmp_path))
+
     def fail(req: httpx.Request):
         return httpx.Response(503, text="SECRET_INTERNAL_TOKEN")
 
-    stt = asyncio.run(benchmark_stt(
-        fixtures, ["test-model"], "https://models.test/v1/audio/transcriptions",
-        "", 1, transport=httpx.MockTransport(fail),
-    ))
+    stt = asyncio.run(
+        benchmark_stt(
+            fixtures,
+            ["test-model"],
+            "https://models.test/v1/audio/transcriptions",
+            "",
+            1,
+            transport=httpx.MockTransport(fail),
+        )
+    )
     summary = stt["results"]["test-model"]
     assert summary["failed"] == 1 and summary["succeeded"] == 0
     assert summary["http_latency_ms"]["samples"] == 0
@@ -167,27 +204,46 @@ def test_backend_failure_does_not_leak_remote_message_or_fake_throughput(tmp_pat
 
 def test_empty_stt_response_valid_for_silence(tmp_path):
     fixture = load_audio_manifest(create_audio(tmp_path, scenario="silence"))
+
     def respond(req: httpx.Request):
         return httpx.Response(200, json={"text": ""})
-    result = asyncio.run(benchmark_stt(
-        fixture, ["fake"], "https://models.test/v1/audio/transcriptions",
-        "", 1, transport=httpx.MockTransport(respond),
-    ))
+
+    result = asyncio.run(
+        benchmark_stt(
+            fixture,
+            ["fake"],
+            "https://models.test/v1/audio/transcriptions",
+            "",
+            1,
+            transport=httpx.MockTransport(respond),
+        )
+    )
     assert result["results"]["fake"]["error_rates_by_language"]["vi"]["successful"] == 1
     assert result["results"]["fake"]["error_rates_by_language"]["vi"]["cer"] is None
 
 
 def test_cli_requires_real_endpoints_and_blocks_corpus_overwrite(tmp_path, monkeypatch):
-    args = parser().parse_args([
-        "mt", "--models", "a,b", "--output-dir", str(tmp_path),
-    ])
+    args = parser().parse_args(
+        [
+            "mt",
+            "--models",
+            "a,b",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
     monkeypatch.delenv("NASTYA_MT_URL", raising=False)
     with pytest.raises(EvaluationError, match="NASTYA_MT_URL"):
         asyncio.run(run(args))
-    args = parser().parse_args([
-        "mt", "--models", "a,b", "--output-dir",
-        str(Path(__file__).resolve().parents[1] / "evaluation"),
-    ])
+    args = parser().parse_args(
+        [
+            "mt",
+            "--models",
+            "a,b",
+            "--output-dir",
+            str(Path(__file__).resolve().parents[1] / "evaluation"),
+        ]
+    )
     with pytest.raises(EvaluationError, match="outside the source corpus"):
         asyncio.run(run(args))
 

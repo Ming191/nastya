@@ -32,8 +32,14 @@ def load_audio_manifest(path: Path) -> list[dict]:
     results = []
     for sample in samples:
         if not isinstance(sample, dict) or set(sample) != {
-            "id", "language", "audio_path", "transcript", "speech_segments_ms",
-            "provenance", "rights_basis", "scenario",
+            "id",
+            "language",
+            "audio_path",
+            "transcript",
+            "speech_segments_ms",
+            "provenance",
+            "rights_basis",
+            "scenario",
         }:
             raise EvaluationError("audio sample has missing or unknown fields")
         uid = sample["id"]
@@ -81,7 +87,8 @@ def load_audio_manifest(path: Path) -> list[dict]:
         cursor = 0
         for item in segments:
             if (
-                not isinstance(item, list) or len(item) != 2
+                not isinstance(item, list)
+                or len(item) != 2
                 or any(type(v) not in (int, float) for v in item)
                 or not (cursor <= item[0] < item[1] <= duration_ms)
             ):
@@ -100,18 +107,25 @@ def boundary_error_ms(expected: list[list], predicted: list[list]) -> dict:
     if not expected and not predicted:
         return {"missed_segments": 0, "false_positive_segments": 0, "mean_boundary_error_ms": None}
     if not expected:
-        return {"missed_segments": 0, "false_positive_segments": len(predicted),
-                "mean_boundary_error_ms": None}
+        return {
+            "missed_segments": 0,
+            "false_positive_segments": len(predicted),
+            "mean_boundary_error_ms": None,
+        }
     if not predicted:
-        return {"missed_segments": len(expected), "false_positive_segments": 0,
-                "mean_boundary_error_ms": None}
+        return {
+            "missed_segments": len(expected),
+            "false_positive_segments": 0,
+            "mean_boundary_error_ms": None,
+        }
     # Match only intervals which overlap; do not pair unrelated pauses.
     used: set[int] = set()
     deviations: list[float] = []
     missed = 0
     for left, right in expected:
         possible = [
-            (i, segment) for i, segment in enumerate(predicted)
+            (i, segment)
+            for i, segment in enumerate(predicted)
             if i not in used and min(right, segment[1]) > max(left, segment[0])
         ]
         if not possible:
@@ -127,7 +141,8 @@ def boundary_error_ms(expected: list[list], predicted: list[list]) -> dict:
         "missed_segments": missed,
         "false_positive_segments": len(predicted) - len(used),
         "mean_boundary_error_ms": round(sum(deviations) / len(deviations), 2)
-        if deviations else None,
+        if deviations
+        else None,
     }
 
 

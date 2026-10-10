@@ -60,8 +60,14 @@ async def run(args: argparse.Namespace) -> dict:
             raise EvaluationError("NASTYA_MT_URL is required")
         _, rows = load_corpus(args.dataset) if args.dataset else load_corpus()
         result, predictions = await benchmark_mt(
-            rows, models, settings.mt_url, settings.mt_api_key,
-            settings.http_timeout_seconds, args.concurrency, args.rounds, args.warmup,
+            rows,
+            models,
+            settings.mt_url,
+            settings.mt_api_key,
+            settings.http_timeout_seconds,
+            args.concurrency,
+            args.rounds,
+            args.warmup,
         )
         outputs = {}
         for model, records in predictions.items():
@@ -76,15 +82,24 @@ async def run(args: argparse.Namespace) -> dict:
             raise EvaluationError("NASTYA_STT_URL is required")
         audio = load_audio_manifest(args.audio_manifest)
         result = await benchmark_stt(
-            audio, models, settings.stt_url, settings.stt_api_key,
-            settings.http_timeout_seconds, args.concurrency, args.rounds, args.warmup,
+            audio,
+            models,
+            settings.stt_url,
+            settings.stt_api_key,
+            settings.http_timeout_seconds,
+            args.concurrency,
+            args.rounds,
+            args.warmup,
         )
         vad = os.getenv("NASTYA_VAD_URL", "")
         if vad:
             url = _endpoint(vad, "NASTYA_VAD_URL")
             result["vad"] = await benchmark_vad(
-                audio, url, os.getenv("NASTYA_VAD_API_KEY", ""),
-                settings.http_timeout_seconds, args.vad_model,
+                audio,
+                url,
+                os.getenv("NASTYA_VAD_API_KEY", ""),
+                settings.http_timeout_seconds,
+                args.vad_model,
             )
         else:
             result["vad"] = {
@@ -105,8 +120,11 @@ async def run(args: argparse.Namespace) -> dict:
     }
     summary_path = args.output_dir / (args.kind + "-benchmark-report.json")
     _write_json(summary_path, result)
-    return {"report": str(summary_path), "models_requested": models,
-            "warning": "No server model attestation, peak VRAM or streaming partial measurements"}
+    return {
+        "report": str(summary_path),
+        "models_requested": models,
+        "warning": "No server model attestation, peak VRAM or streaming partial measurements",
+    }
 
 
 def main() -> None:

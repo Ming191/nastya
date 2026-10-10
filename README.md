@@ -156,22 +156,22 @@ Replace the control file with predictions from a hosted model: one JSON object p
 
 ## Remote STT and translation benchmarking
 
-The benchmark tools call hosted model endpoints. They do **not** download or run models locally. Set \`NASTYA_MT_URL\` and optional \`NASTYA_MT_API_KEY\` for translation; \`NASTYA_STT_URL\` and optional \`NASTYA_STT_API_KEY\` for speech recognition. The API contracts are the same as the worker providers above.
+The benchmark tools call hosted model endpoints. They do **not** download or run models locally. Set `NASTYA_MT_URL` and optional `NASTYA_MT_API_KEY` for translation; `NASTYA_STT_URL` and optional `NASTYA_STT_API_KEY` for speech recognition. The API contracts are the same as the worker providers above.
 
 To run an apples-to-apples comparison on the 120-sentence synthetic RU/VI dataset:
 
-\`\`\`bash
+```bash
 cd services/ai-worker
 python -m nastya_worker.benchmark_remote mt \
   --models facebook/nllb-200-distilled-600M,facebook/nllb-200-1.3B \
   --concurrency 2 --rounds 2 --warmup 1 --output-dir /tmp/nastya-mt-results
-\`\`\`
+```
 
 Model IDs are passed to your server; **the remote service must actually host and select each model**. Outputs include model-specific predictions and a JSON report of coverage, response latency (p50/p95), concurrency and measured HTTP throughput. Automatic text overlap is **not** a substitute for independent bilingual review. There is no automatic server/GPU memory measurement or first streaming partial measurement.
 
 STT requires a separate **operator-supplied** JSON audio manifest and local PCM WAV fixtures with permission to use the recordings. The NAS-8 text corpus does not contain audio. The manifest schema is:
 
-\`\`\`json
+```json
 {
   "schema_version": 1,
   "samples": [{
@@ -185,16 +185,16 @@ STT requires a separate **operator-supplied** JSON audio manifest and local PCM 
     "scenario": "speech"
   }]
 }
-\`\`\`
+```
 
-Use mono PCM16 at 16 kHz, at most 30 seconds per clip. Allowed scenarios are \`speech\`, \`noise\`, \`interruption\` and \`silence\`. Keep recordings and manifests containing personal information out of the repository.
+Use mono PCM16 at 16 kHz, at most 30 seconds per clip. Allowed scenarios are `speech`, `noise`, `interruption` and `silence`. Keep recordings and manifests containing personal information out of the repository.
 
-\`\`\`bash
+```bash
 python -m nastya_worker.benchmark_remote stt \
   --models whisper-fast,whisper-quality \
   --audio-manifest /path/to/private-fixtures/manifest.json \
   --concurrency 2 --rounds 2 --output-dir /tmp/nastya-stt-results
-\`\`\`
+```
 
-Optionally configure \`NASTYA_VAD_URL\` (and \`NASTYA_VAD_API_KEY\`) to evaluate a VAD endpoint accepting a WAV file via multipart upload and returning \`{"segments":[{"start_ms":120,"end_ms":900}]}\`. Compare the observed word/character errors and VAD boundaries using your annotated fixture corpus. First-partial streaming latency, GPU peak VRAM, true server queue latency and cross-region performance must be measured separately where supported by the model host.
+Optionally configure `NASTYA_VAD_URL` (and `NASTYA_VAD_API_KEY`) to evaluate a VAD endpoint accepting a WAV file via multipart upload and returning `{"segments":[{"start_ms":120,"end_ms":900}]}`. Compare the observed word/character errors and VAD boundaries using your annotated fixture corpus. First-partial streaming latency, GPU peak VRAM, true server queue latency and cross-region performance must be measured separately where supported by the model host.
 
