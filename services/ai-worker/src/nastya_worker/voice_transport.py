@@ -3,6 +3,7 @@
 Called by a future STT->MT->TTS orchestrator. This module never runs TTS,
 records calls, broadcasts voice or publishes an AI microphone/media track.
 """
+
 import asyncio
 import base64
 import json
@@ -72,24 +73,29 @@ async def publish_voice(room: Any, caption: dict, audio: SynthesizedSpeech) -> i
     _check_audio(caption, audio)
     if not targets:
         return 0
-    chunks = [
-        audio.audio[i : i + CHUNK_BYTES]
-        for i in range(0, len(audio.audio), CHUNK_BYTES)
-    ]
+    chunks = [audio.audio[i : i + CHUNK_BYTES] for i in range(0, len(audio.audio), CHUNK_BYTES)]
     if len(chunks) > MAX_CHUNKS:
         raise ValueError("too many voice chunks")
-    await _send(room, targets, {
-        **_base(caption, "voice.begin"),
-        "mimeType": "audio/mpeg",
-        "byteLength": len(audio.audio),
-        "chunkCount": len(chunks),
-    })
+    await _send(
+        room,
+        targets,
+        {
+            **_base(caption, "voice.begin"),
+            "mimeType": "audio/mpeg",
+            "byteLength": len(audio.audio),
+            "chunkCount": len(chunks),
+        },
+    )
     for index, chunk in enumerate(chunks):
-        await _send(room, targets, {
-            **_base(caption, "voice.chunk"),
-            "index": index,
-            "data": base64.b64encode(chunk).decode("ascii"),
-        })
+        await _send(
+            room,
+            targets,
+            {
+                **_base(caption, "voice.chunk"),
+                "index": index,
+                "data": base64.b64encode(chunk).decode("ascii"),
+            },
+        )
     await _send(room, targets, _base(caption, "voice.end"))
     return len(targets)
 
@@ -132,8 +138,10 @@ class VoiceDelivery:
         async def run() -> None:
             try:
                 result = await self.tts.synthesize(
-                    caption["translatedText"], caption["targetLanguage"],
-                    voice, caption["utteranceId"],
+                    caption["translatedText"],
+                    caption["targetLanguage"],
+                    voice,
+                    caption["utteranceId"],
                 )
                 if generation != self._generation or result.audio is None:
                     return

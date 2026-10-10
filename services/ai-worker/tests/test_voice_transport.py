@@ -4,11 +4,15 @@ import json
 from types import SimpleNamespace
 
 import pytest
-
 from nastya_worker.providers.tts import OptionalTts, SynthesizedSpeech
+
 from nastya_worker.voice_transport import (
-    CHUNK_BYTES, MAX_AUDIO_BYTES, VOICE_TOPIC, VoiceDelivery,
-    cancel_voice, publish_voice,
+    CHUNK_BYTES,
+    MAX_AUDIO_BYTES,
+    VOICE_TOPIC,
+    VoiceDelivery,
+    cancel_voice,
+    publish_voice,
 )
 
 ROOM = "nastya_" + "a" * 32
@@ -16,12 +20,20 @@ ROOM = "nastya_" + "a" * 32
 
 def caption(speaker="human:owner", target="ru", number=1):
     return {
-        "version": 1, "type": "caption.upsert", "roomId": ROOM,
-        "speakerId": speaker, "utteranceId": f"{speaker}:1:{number}",
-        "revision": 1, "sequence": number,
+        "version": 1,
+        "type": "caption.upsert",
+        "roomId": ROOM,
+        "speakerId": speaker,
+        "utteranceId": f"{speaker}:1:{number}",
+        "revision": 1,
+        "sequence": number,
         "sourceLanguage": "vi" if target == "ru" else "ru",
-        "targetLanguage": target, "sourceText": "Synthetic", "translatedText": "Test",
-        "isFinal": True, "startOffsetMs": 0, "endOffsetMs": 1000,
+        "targetLanguage": target,
+        "sourceText": "Synthetic",
+        "translatedText": "Test",
+        "isFinal": True,
+        "startOffsetMs": 0,
+        "endOffsetMs": 1000,
     }
 
 
@@ -41,15 +53,21 @@ def room():
     guest = SimpleNamespace(identity="human:guest", attributes={"sourceLanguage": "ru"})
     intruder = SimpleNamespace(identity="interpreter-dup", attributes={"sourceLanguage": "ru"})
     return SimpleNamespace(
-        name=ROOM, local_participant=MockLocal(),
+        name=ROOM,
+        local_participant=MockLocal(),
         remote_participants={"owner": owner, "guest": guest, "intruder": intruder},
     )
 
 
 def speech(c, data=b"\xff\xfb\x80test"):
     return SynthesizedSpeech(
-        c["utteranceId"], c["targetLanguage"], "ru-RU-SvetlanaNeural",
-        "audio/mpeg", data, 20, 45,
+        c["utteranceId"],
+        c["targetLanguage"],
+        "ru-RU-SvetlanaNeural",
+        "audio/mpeg",
+        data,
+        20,
+        45,
     )
 
 
@@ -65,11 +83,16 @@ def test_targeted_voice_is_bounded_chunked_and_matches_caption_identifiers():
         assert await publish_voice(target_room, cap, speech(cap, data)) == 1
         packets = target_room.local_participant.sent
         assert [x[0]["type"] for x in packets] == [
-            "voice.begin", "voice.chunk", "voice.chunk", "voice.chunk", "voice.end",
+            "voice.begin",
+            "voice.chunk",
+            "voice.chunk",
+            "voice.chunk",
+            "voice.end",
         ]
         for value, meta in packets:
             assert meta == {
-                "reliable": True, "destination_identities": ["human:guest"],
+                "reliable": True,
+                "destination_identities": ["human:guest"],
                 "topic": VOICE_TOPIC,
             }
             assert value["utteranceId"] == cap["utteranceId"]
@@ -89,11 +112,14 @@ def test_targeted_voice_is_bounded_chunked_and_matches_caption_identifiers():
     run(scenario())
 
 
-@pytest.mark.parametrize("change", [
-    lambda c: {**c, "isFinal": False},
-    lambda c: {**c, "roomId": "nastya_" + "b" * 32},
-    lambda c: {**c, "translatedText": ""},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda c: {**c, "isFinal": False},
+        lambda c: {**c, "roomId": "nastya_" + "b" * 32},
+        lambda c: {**c, "translatedText": ""},
+    ],
+)
 def test_no_voice_for_untrusted_caption(change):
     async def scenario():
         target_room = room()
@@ -101,6 +127,7 @@ def test_no_voice_for_untrusted_caption(change):
         with pytest.raises(ValueError):
             await publish_voice(target_room, change(cap), speech(cap))
         assert not target_room.local_participant.sent
+
     run(scenario())
 
 
@@ -119,6 +146,7 @@ def test_deny_bad_identity_wrong_language_and_oversized_audio():
         target_room.remote_participants["guest"].attributes["sourceLanguage"] = "vi"
         assert await publish_voice(target_room, cap, speech(cap)) == 0
         assert not target_room.local_participant.sent
+
     run(scenario())
 
 
@@ -145,12 +173,15 @@ def test_latest_speech_cancels_older_synthesis_and_never_replays():
         await delivery.replace(first, "ru-RU-SvetlanaNeural")
         await started.wait()
         await delivery.replace(second, "ru-RU-SvetlanaNeural")
-        await asyncio.sleep(.05)
+        await asyncio.sleep(0.05)
         assert was_cancelled.is_set()
         messages = [p["type"] for p, _ in target_room.local_participant.sent]
         assert messages == ["voice.cancel", "voice.begin", "voice.chunk", "voice.end"]
-        assert all(p["utteranceId"] != first["utteranceId"]
-                   for p, _ in target_room.local_participant.sent if p["type"] != "voice.cancel")
+        assert all(
+            p["utteranceId"] != first["utteranceId"]
+            for p, _ in target_room.local_participant.sent
+            if p["type"] != "voice.cancel"
+        )
         await delivery.stop()
         assert target_room.local_participant.sent[-1][0]["type"] == "voice.cancel"
 
@@ -162,10 +193,12 @@ def test_failed_tts_keeps_caption_only_without_voice_data():
         class Failing:
             async def synthesize(self, *args):
                 raise RuntimeError("private message")
+
         target_room = room()
         delivery = VoiceDelivery(target_room, OptionalTts(True, Failing()))
         await delivery.replace(caption(), "ru-RU-SvetlanaNeural")
-        await asyncio.sleep(.01)
+        await asyncio.sleep(0.01)
         assert not target_room.local_participant.sent
         await delivery.stop()
+
     run(scenario())
