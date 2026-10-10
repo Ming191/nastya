@@ -12,8 +12,8 @@ import time
 import wave
 from array import array
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from nastya_worker.providers.types import Language, SpeechRecognizer, Transcript
 
@@ -91,13 +91,16 @@ class Segmenter:
     """One monotonic audio sample clock per human publication."""
 
     def __init__(
-        self, speaker: str, language: Language, generation: int,
-        vad: VadOptions = VadOptions(),
+        self,
+        speaker: str,
+        language: Language,
+        generation: int,
+        vad: VadOptions | None = None,
     ):
         if speaker not in HUMANS:
             raise ValueError("not a human role")
         self.speaker, self.language, self.generation = speaker, language, generation
-        self.vad = vad
+        self.vad = vad or VadOptions()
         self.clock = 0
         self.start = 0
         self.frames: list[bytes] = []
@@ -119,9 +122,8 @@ class Segmenter:
             self.preroll.append((frame_start, pcm))
             self.onset = self.onset + duration if active else 0.0
             while (
-                self.preroll and
-                (self.clock - self.preroll[0][0]) * 1000 / SAMPLE_RATE >
-                self.vad.pre_roll_ms
+                self.preroll
+                and (self.clock - self.preroll[0][0]) * 1000 / SAMPLE_RATE > self.vad.pre_roll_ms
             ):
                 self.preroll.popleft()
             if self.onset < self.vad.onset_ms:
@@ -148,14 +150,20 @@ class Segmenter:
         if not self.frames:
             return None
         self.serial += 1
-        segment = Segment(
-            speaker=self.speaker, language=self.language,
-            utterance_id=f"{self.speaker}:{self.generation}:{self.serial}",
-            start_ms=round(self.start * 1000 / SAMPLE_RATE),
-            end_ms=round(self.clock * 1000 / SAMPLE_RATE),
-            pcm=b"".join(self.frames), generation=self.generation,
-            created_at=time.monotonic(),
-        ) if self.voiced >= self.vad.min_speech_ms else None
+        segment = (
+            Segment(
+                speaker=self.speaker,
+                language=self.language,
+                utterance_id=f"{self.speaker}:{self.generation}:{self.serial}",
+                start_ms=round(self.start * 1000 / SAMPLE_RATE),
+                end_ms=round(self.clock * 1000 / SAMPLE_RATE),
+                pcm=b"".join(self.frames),
+                generation=self.generation,
+                created_at=time.monotonic(),
+            )
+            if self.voiced >= self.vad.min_speech_ms
+            else None
+        )
         self.reset()
         return segment
 
@@ -169,11 +177,16 @@ class SpeakerPipeline:
     """Per-speaker bounded inference queue, with a shared GPU/API semaphore."""
 
     def __init__(
-        self, speaker: str, language: Language, generation: int,
-        recognizer: SpeechRecognizer, semaphore: asyncio.Semaphore,
+        self,
+        speaker: str,
+        language: Language,
+        generation: int,
+        recognizer: SpeechRecognizer,
+        semaphore: asyncio.Semaphore,
         on_transcript: Callable[[Segment, Transcript], Awaitable[None]],
-        queue_limit: int = 2, expiry_seconds: float = 8.0,
-        vad: VadOptions = VadOptions(),
+        queue_limit: int = 2,
+        expiry_seconds: float = 8.0,
+        vad: VadOptions | None = None,
     ):
         if not 1 <= queue_limit <= 8 or not 0.5 <= expiry_seconds <= 30:
             raise ValueError("invalid memory or age bound")
@@ -226,8 +239,8 @@ class SpeakerPipeline:
                             segment.wav(), segment.language
                         )
                         if (
-                            self.running and
-                            time.monotonic() - segment.created_at <= self.expiry_seconds
+                            self.running
+                            and time.monotonic() - segment.created_at <= self.expiry_seconds
                         ):
                             await self.on_transcript(segment, transcript)
                             self.processed += 1

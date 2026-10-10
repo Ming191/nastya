@@ -43,11 +43,16 @@ def worker_token(room_id: str, keys: dict[str, str]) -> str:
         .with_identity("interpreter")
         .with_name("Nastya Interpreter")
         .with_ttl(timedelta(minutes=5))
-        .with_grants(api.VideoGrants(
-            room_join=True, room=room_id, can_subscribe=True,
-            can_publish=False, can_publish_data=False,
-            can_update_own_metadata=False,
-        ))
+        .with_grants(
+            api.VideoGrants(
+                room_join=True,
+                room=room_id,
+                can_subscribe=True,
+                can_publish=False,
+                can_publish_data=False,
+                can_update_own_metadata=False,
+            )
+        )
         .to_jwt()
     )
 
@@ -135,9 +140,7 @@ class RoomAudioReceiver:
         language = source_language(participant.attributes)
         if language is None:
             return
-        task = asyncio.create_task(
-            self._capture(identity, epoch, language, track)
-        )
+        task = asyncio.create_task(self._capture(identity, epoch, language, track))
         self.readers[identity] = (publication.sid, task)
 
     async def _on_transcript(self, segment: Any, transcript: Any) -> None:
@@ -148,20 +151,25 @@ class RoomAudioReceiver:
         self.processed += 1
         LOGGER.info(
             "stt_ok speaker=%s utterance=%s start_ms=%d end_ms=%d",
-            identity, segment.utterance_id, segment.start_ms, segment.end_ms,
+            identity,
+            segment.utterance_id,
+            segment.start_ms,
+            segment.end_ms,
         )
 
     async def _capture(self, identity: str, epoch: int, language: str, track: Any) -> None:
         stream = None
         pipeline = SpeakerPipeline(
-            identity, language, epoch, self.recognizer,
-            self.inference, self._on_transcript,
+            identity,
+            language,
+            epoch,
+            self.recognizer,
+            self.inference,
+            self._on_transcript,
         )
         pipeline.start()
         try:
-            stream = self.rtc.AudioStream.from_track(
-                track=track, sample_rate=16000, num_channels=1
-            )
+            stream = self.rtc.AudioStream.from_track(track=track, sample_rate=16000, num_channels=1)
             async for event in stream:
                 if not self._active or self.epochs[identity] != epoch:
                     break
@@ -209,7 +217,8 @@ async def serve_room(room_id: str, settings: Settings) -> None:
             receiver.register()
             try:
                 await room.connect(
-                    keys["LIVEKIT_URL"], worker_token(room_id, keys),
+                    keys["LIVEKIT_URL"],
+                    worker_token(room_id, keys),
                     options=rtc.RoomOptions(auto_subscribe=False),
                 )
                 backoff_seconds = 1

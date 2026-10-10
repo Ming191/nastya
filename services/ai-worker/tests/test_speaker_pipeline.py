@@ -90,6 +90,7 @@ def test_vad_forces_end_of_long_phrase_with_bounded_memory():
 def test_independent_simultaneous_speakers_and_stt_failure_isolation():
     async def scenario():
         results = []
+
         class Recognizer:
             async def transcribe(self, wav, language):
                 assert wav.startswith(b"RIFF")
@@ -117,42 +118,49 @@ def test_independent_simultaneous_speakers_and_stt_failure_isolation():
         assert guest.failures == 1
         assert len(results) == 1 and results[0][0] == "human:owner"
         await asyncio.gather(owner.stop(), guest.stop())
+
     asyncio.run(scenario())
 
 
 def test_queue_backpressure_staleness_and_epoch_invalidation():
     async def scenario():
         seen = []
+
         class Recognizer:
             async def transcribe(self, wav, language):
                 await asyncio.sleep(0.01)
                 return Transcript(text="ok", language=language)
+
         async def store(segment, transcript):
             seen.append(segment.utterance_id)
-        pipe = SpeakerPipeline("human:owner", "vi", 3, Recognizer(),
-                               asyncio.Semaphore(1), store, queue_limit=1)
+
+        pipe = SpeakerPipeline(
+            "human:owner", "vi", 3, Recognizer(), asyncio.Semaphore(1), store, queue_limit=1
+        )
         pipe.start()
         for serial in range(3):
-            pipe.enqueue(Segment("human:owner", "vi", f"n:{serial}", 0, 200,
-                                 LOUD, 3, time.monotonic()))
+            pipe.enqueue(
+                Segment("human:owner", "vi", f"n:{serial}", 0, 200, LOUD, 3, time.monotonic())
+            )
         assert pipe.dropped == 2
-        pipe.enqueue(Segment("human:owner", "vi", "old-epoch", 0, 200,
-                             LOUD, 2, time.monotonic()))
+        pipe.enqueue(Segment("human:owner", "vi", "old-epoch", 0, 200, LOUD, 2, time.monotonic()))
         assert pipe.dropped == 3
         await asyncio.sleep(0.04)
         assert seen == ["n:2"]
         await pipe.stop()
-        pipe.enqueue(Segment("human:owner", "vi", "after-stop", 0, 100,
-                             LOUD, 3, time.monotonic()))
+        pipe.enqueue(Segment("human:owner", "vi", "after-stop", 0, 100, LOUD, 3, time.monotonic()))
         assert seen == ["n:2"]
-        stale = SpeakerPipeline("human:guest", "ru", 5, Recognizer(),
-                                asyncio.Semaphore(1), store, expiry_seconds=1)
-        stale.enqueue(Segment("human:guest", "ru", "expired", 0, 100,
-                              LOUD, 5, time.monotonic() - 2))
+        stale = SpeakerPipeline(
+            "human:guest", "ru", 5, Recognizer(), asyncio.Semaphore(1), store, expiry_seconds=1
+        )
+        stale.enqueue(
+            Segment("human:guest", "ru", "expired", 0, 100, LOUD, 5, time.monotonic() - 2)
+        )
         stale.start()
         await asyncio.sleep(0.02)
         assert stale.dropped == 1
         await stale.stop()
+
     asyncio.run(scenario())
 
 
@@ -174,12 +182,16 @@ def test_room_keys_validation_never_accepts_arbitrary_target():
 
 def test_worker_token_subscribes_but_can_never_publish():
     from livekit import api
+
     claims = api.TokenVerifier("public-key", "secret-key").verify(
-        worker_token("nastya_" + "a" * 32, {
-            "LIVEKIT_URL": "ws://localhost:7880",
-            "LIVEKIT_API_KEY": "public-key",
-            "LIVEKIT_API_SECRET": "secret-key",
-        })
+        worker_token(
+            "nastya_" + "a" * 32,
+            {
+                "LIVEKIT_URL": "ws://localhost:7880",
+                "LIVEKIT_API_KEY": "public-key",
+                "LIVEKIT_API_SECRET": "secret-key",
+            },
+        )
     )
     assert claims.identity == "interpreter"
     assert claims.video.room == "nastya_" + "a" * 32
@@ -195,6 +207,7 @@ def test_receiver_selective_subscription_and_generation():
             self.source, self.kind = source, kind
             self.subscribed = False
             self.sid = source
+
         def set_subscribed(self, value):
             self.subscribed = value
 
@@ -202,6 +215,7 @@ def test_receiver_selective_subscription_and_generation():
         class TrackKind:
             KIND_AUDIO = 1
             KIND_VIDEO = 2
+
         class TrackSource:
             SOURCE_MICROPHONE = 1
             SOURCE_SCREEN_SHARE_AUDIO = 2
@@ -210,10 +224,12 @@ def test_receiver_selective_subscription_and_generation():
         def __init__(self):
             self.events = {}
             self.remote_participants = {}
+
         def on(self, event):
             def bind(fn):
                 self.events[event] = fn
                 return fn
+
             return bind
 
     room = Room()
@@ -221,10 +237,16 @@ def test_receiver_selective_subscription_and_generation():
     r.register()
     allowed = Pub(Rtc.TrackSource.SOURCE_MICROPHONE, Rtc.TrackKind.KIND_AUDIO)
     ignored = Pub(Rtc.TrackSource.SOURCE_SCREEN_SHARE_AUDIO, Rtc.TrackKind.KIND_AUDIO)
-    guest = SimpleNamespace(identity="human:guest", attributes={"sourceLanguage": "ru"},
-                            track_publications={"a": allowed, "b": ignored})
-    robot = SimpleNamespace(identity="interpreter", attributes={"sourceLanguage": "ru"},
-                            track_publications={"a": allowed})
+    guest = SimpleNamespace(
+        identity="human:guest",
+        attributes={"sourceLanguage": "ru"},
+        track_publications={"a": allowed, "b": ignored},
+    )
+    robot = SimpleNamespace(
+        identity="interpreter",
+        attributes={"sourceLanguage": "ru"},
+        track_publications={"a": allowed},
+    )
     room.events["track_published"](ignored, guest)
     assert not ignored.subscribed
     room.events["track_published"](allowed, robot)
