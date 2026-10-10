@@ -14,7 +14,8 @@
   "dependencies": {
     "next": "16.4.0",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "livekit-server-sdk": "2.19.1"
   },
   "devDependencies": {
     "@types/node": "22.18.6",
