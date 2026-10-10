@@ -169,7 +169,7 @@ class RoomAudioReceiver:
         )
         pipeline.start()
         try:
-            stream = self.rtc.AudioStream.from_track(track=track, sample_rate=16000, num_channels=1)
+            stream = self.rtc.AudioStream.from_track(track=track, sample_rate=16000, num_channels=1, capacity=50)
             async for event in stream:
                 if not self._active or self.epochs[identity] != epoch:
                     break
