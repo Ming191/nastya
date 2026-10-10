@@ -42,6 +42,14 @@ jobs:
           python -m nastya_worker.evaluate validate
           python -m nastya_worker.evaluate baseline --output /tmp/nastya-eval-baseline.jsonl
           python -m nastya_worker.evaluate score --predictions /tmp/nastya-eval-baseline.jsonl --system source-copy-control --output /tmp/nastya-eval-report.json
+      - name: Smoke remote translation benchmark against local MOCK server
+        run: |
+          python -m nastya_worker.mock_api > /tmp/nastya-mock.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          python -c 'import socket,time; [(time.sleep(0.1)) for _ in range(20) if socket.socket().connect_ex(("127.0.0.1",8765)) != 0]'
+          NASTYA_MT_URL=http://127.0.0.1:8765/v1/translate python -m nastya_worker.benchmark_remote mt --models mock-small,mock-large --output-dir /tmp/nastya-remote-bench-smoke --concurrency 2 --rounds 1
+          python -c 'import json; r=json.load(open("/tmp/nastya-remote-bench-smoke/mt-benchmark-report.json")); assert r["corpus_count"] == 120 and len(r["results"]) == 2 and all(v["succeeded"] == 120 for v in r["results"].values())'
       - run: python -m nastya_worker --health
 
   rtc:
