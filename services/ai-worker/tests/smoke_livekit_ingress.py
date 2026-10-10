@@ -25,11 +25,15 @@ def token(identity: str, language: str = "") -> str:
         api.AccessToken(API_KEY, API_SECRET)
         .with_identity(identity)
         .with_ttl(timedelta(minutes=5))
-        .with_grants(api.VideoGrants(
-            room_join=True, room=ROOM, can_publish=identity != "interpreter",
-            can_subscribe=identity == "interpreter",
-            can_publish_data=False,
-        ))
+        .with_grants(
+            api.VideoGrants(
+                room_join=True,
+                room=ROOM,
+                can_publish=identity != "interpreter",
+                can_subscribe=identity == "interpreter",
+                can_publish_data=False,
+            )
+        )
     )
     if language:
         builder = builder.with_attributes({"sourceLanguage": language})
@@ -64,8 +68,9 @@ async def main() -> None:
     receiver.register()
     owner = guest = None
     try:
-        await worker.connect(URL, token("interpreter"),
-                             options=rtc.RoomOptions(auto_subscribe=False))
+        await worker.connect(
+            URL, token("interpreter"), options=rtc.RoomOptions(auto_subscribe=False)
+        )
         owner = await connect("human:owner", "vi")
         guest = await connect("human:guest", "ru")
         owner_source = rtc.AudioSource(16000, 1)
@@ -79,9 +84,7 @@ async def main() -> None:
             guest.local_participant.publish_track(guest_track, opts),
         )
         end = time.monotonic() + 12
-        while time.monotonic() < end and set(receiver.readers) != {
-            "human:owner", "human:guest"
-        }:
+        while time.monotonic() < end and set(receiver.readers) != {"human:owner", "human:guest"}:
             await asyncio.sleep(0.1)
         assert set(receiver.readers) == {"human:owner", "human:guest"}, (
             "worker did not subscribe two distinct human microphone tracks"
@@ -97,9 +100,7 @@ async def main() -> None:
         end = time.monotonic() + 10
         while time.monotonic() < end and receiver.processed < 2:
             await asyncio.sleep(0.1)
-        assert receiver.processed >= 2, (
-            "no complete per-speaker speech segments reached STT"
-        )
+        assert receiver.processed >= 2, "no complete per-speaker speech segments reached STT"
         assert receiver.failures == 0
         assert receiver.inference._value == 1
         completed.append("real SFU two-microphone STT ingest")
