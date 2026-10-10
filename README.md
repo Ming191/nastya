@@ -89,3 +89,30 @@ See `apps/web/.env.example` and `services/ai-worker/.env.example` for other conf
 - `.github/workflows/ci.yml` — automated checks
 
 Planning, architecture decisions and development records are maintained in [Linear](https://linear.app/cmms-warehouse/team/NAS/overview).
+
+## Room access
+
+Set these **server-side** environment variables in `apps/web/.env.local` or your deployment secrets:
+
+```dotenv
+NASTYA_PUBLIC_ORIGIN=http://localhost:3000
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+NASTYA_INVITE_SECRET=your-random-secret-at-least-32-bytes
+```
+
+Generate a random invite-signing secret with `openssl rand -hex 32`. Do not expose the LiveKit API secret or invite secret in the client bundle or committed files. Production room URLs require HTTPS; local WebSocket LiveKit development can use `ws://localhost:7880`.
+
+Open the web application and select **Create a private room**. Send the displayed guest invitation link to the other participant. Each participant chooses Russian or Vietnamese and authorizes room access. The client receives a room-scoped LiveKit JWT with a five-minute join validity; invitation links expire after one hour. Token issuance and room creation require a reachable LiveKit service.
+
+Alternatively, create/redeem rooms using JSON over HTTPS:
+
+```bash
+curl -X POST http://localhost:3000/api/rooms
+curl -X POST http://localhost:3000/api/rooms/join \
+  -H 'Content-Type: application/json' \
+  -d '{"version":1,"roomId":"...","invite":"...","preferredLanguage":"vi"}'
+```
+
+Keep owner invitations private. Guest links are bearer credentials: anyone with a valid link can request the guest role while it is unoccupied. Per-process throttling is only a basic abuse backstop; use trusted edge rate limits for public deployment.

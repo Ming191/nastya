@@ -1,17 +1,42 @@
+"use client";
+
+import { useState } from "react";
+
+type CreatedRoom = { roomId: string; ownerInvite: string; guestUrl: string };
 export default function HomePage() {
-  return (
-    <main className="shell">
-      <div className="eyebrow">NASTYA / MVP</div>
-      <h1>Talk naturally, across languages.</h1>
-      <p>
-        A private Vietnamese ↔ Russian video-call translator. The room and AI
-        pipeline are coming in the next milestones.
-      </p>
-      <div className="status" role="status">
-        <span className="dot" aria-hidden="true" />
-        Scaffold ready · Calling not connected
-      </div>
-      <a href="/api/health">Application health</a>
-    </main>
-  );
+  const [room, setRoom] = useState<CreatedRoom | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function create() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/rooms", { method: "POST", cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.code ?? "Unable to create room");
+      const created = payload as CreatedRoom;
+      window.sessionStorage.setItem("nastya:owner:" + created.roomId, created.ownerInvite);
+      setRoom(created);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to create room");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <main className="shell">
+    <div className="eyebrow">NASTYA</div>
+    <h1>Speak your language. Stay connected.</h1>
+    <p>Private video calls with Russian ↔ Vietnamese translation.</p>
+    <button onClick={create} disabled={busy}>{busy ? "Creating..." : "Create a private room"}</button>
+    {error && <p role="alert">{error}</p>}
+    {room && <section aria-label="Room invitation">
+      <p>Send this invitation to the other person:</p>
+      <p><a href={room.guestUrl}>{room.guestUrl}</a></p>
+      <button onClick={() => navigator.clipboard.writeText(room.guestUrl)}>Copy invite link</button>
+      <p><a href={"/call/" + room.roomId}>Continue as room owner</a></p>
+    </section>}
+    <p>Invitations expire after one hour. Room access uses temporary tokens.</p>
+  </main>;
 }

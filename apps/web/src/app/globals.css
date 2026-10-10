@@ -7,10 +7,11 @@ body {
   color: #f5f6fb;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-a { color: #b2bfff; }
+a { color: #b2bfff; overflow-wrap: anywhere; }
 .shell { max-width: 700px; margin: 0 auto; padding: clamp(48px, 10vw, 120px) 28px; }
 .eyebrow { color: #9da5c1; font-weight: 700; letter-spacing: .22em; font-size: .72rem; }
 h1 { font-size: clamp(2.5rem, 7vw, 4.3rem); line-height: 1.08; letter-spacing: -.05em; }
 p { max-width: 54ch; line-height: 1.65; color: #c3c7d1; }
-.status { display: flex; align-items: center; gap: 10px; margin: 32px 0; color: #c8cde3; }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: #a5b5ff; }
+button, select { padding: 12px 16px; background: #282b39; color: #f5f6fb; border: 1px solid #676f8b; border-radius: 8px; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+section { border: 1px solid #43465a; border-radius: 12px; padding: 20px; margin-top: 24px; }
