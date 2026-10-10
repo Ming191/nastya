@@ -79,3 +79,5 @@ section { border: 1px solid #43465a; border-radius: 12px; padding: 20px; margin-
 .voice-controls p { margin: 0; font-size: .88rem; }
 .voice-controls > p[role="status"] { width: 100%; }
 .voice-controls .device-field { min-width: 120px; }
+.privacy-consent { display: flex; gap: 12px; align-items: flex-start; margin: 14px 0; font-size: .9rem; line-height: 1.5; }
+.privacy-consent input { margin-top: 5px; width: 18px; height: 18px; flex-shrink: 0; }

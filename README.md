@@ -282,3 +282,38 @@ starts. Browser/server clocks must have a documented synchronisation error
 bound; synthetic measurements never satisfy real-session acceptance.
 Current production calls do not export such traces automatically.
 
+## Room security settings
+
+For any public deployment, configure the server-only `NASTYA_REDIS_REST_URL`
+and `NASTYA_REDIS_REST_TOKEN` credentials (from a private Redis REST
+deployment with atomic Lua EVAL), in addition to the LiveKit and invite-signing
+variables. The app **rejects all room creation and join requests** if the shared
+security store is missing or unavailable. Local HTTP loopback testing uses a
+process-local security store and must **never** be exposed to the public internet.
+
+Creation is limited globally to 60 requests/minute and joins to 300/minute in
+the shared Redis gate, in addition to smaller local backstops. Invite redemption
+binds each human role to the **first browser session** to claim it until the
+room invite expires; that same tab can rejoin/reload, but transferring an already
+claimed invite to a new browser is rejected. Create a new room if the claiming
+tab or its session storage is lost. The initial invite link remains a bearer
+secret before first redemption: share it only with the intended participant.
+Room invites live for one hour; LiveKit join JWTs are limited to five minutes
+and to a specific room/identity. The server allows only camera/microphone
+track sources from human participants, not arbitrary AI data packets.
+
+Browser and API responses have no-referrer, nosniff, anti-framing and CSP
+policies. The user must affirm the media/AI processing notice before joining.
+Neither the app nor the model worker persist call audio or transcripts by
+default; configured inference providers and LiveKit may have separate data
+retention rules. Review those providers and obtain user consent before use.
+
+Redis REST must be reachable by the **server runtime only** (not via client
+environment variables). Avoid exposing room invitations, Redis tokens,
+LiveKit API secrets or Join API responses in analytics, server access logs,
+support screenshots, monitoring, public chat or error messages. Room deletion,
+join-token revocation and production-hosted edge DDoS protection require
+deployment-side coordination; this app cannot retroactively invalidate an
+already-issued LiveKit JWT or stop a compromised invite from being claimed
+first.
+

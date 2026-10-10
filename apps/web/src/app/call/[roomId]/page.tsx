@@ -17,6 +17,7 @@ export default function RoomEntryPage() {
   const [language, setLanguage] = useState<SpokenLanguage>("ru");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [consented, setConsented] = useState(false);
   const [joined, setJoined] = useState<{ room: Room; participant: Pick<JoinResponse, "participantRole" | "sourceLanguage"> } | null>(null);
   const [canShare, setCanShare] = useState(false);
   const roomRef = useRef<Room | null>(null);
@@ -82,7 +83,7 @@ export default function RoomEntryPage() {
   }, [joined]);
 
   async function join() {
-    if (!isRoomId(roomId) || connectingRef.current || roomRef.current) return;
+    if (!isRoomId(roomId) || !consented || connectingRef.current || roomRef.current) return;
     connectingRef.current = true;
     const generation = ++generationRef.current;
     const controller = new AbortController();
@@ -102,11 +103,20 @@ export default function RoomEntryPage() {
         setStatus("Room invitation missing or expired. Ask the host for a new link.");
         return;
       }
+      // Per-tab cryptographic rejoin proof; unlike the shared invite capability,
+      // this nonce is never placed in a URL or disclosed to the other participant.
+      const nonceKey = "nastya:nonce:" + roomId;
+      let sessionNonce = window.sessionStorage.getItem(nonceKey);
+      if (!sessionNonce) {
+        sessionNonce = crypto.randomUUID();
+        window.sessionStorage.setItem(nonceKey, sessionNonce);
+      }
       const response = await fetch("/api/rooms/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           version: 1, roomId, invite: capability.token, preferredLanguage: language,
+          sessionNonce,
         }),
         cache: "no-store",
         signal: controller.signal,
@@ -208,7 +218,12 @@ export default function RoomEntryPage() {
       </select>
     </label>
     <p>You will speak {languageLabel(language)}. Translation is configured separately.</p>
-    <button type="button" onClick={() => void join()} disabled={busy || !isRoomId(roomId)}>
+    <label className="privacy-consent">
+      <input type="checkbox" checked={consented} disabled={busy}
+        onChange={(event) => setConsented(event.target.checked)} />
+      <span>I understand that camera/microphone media is sent to call participants via LiveKit. If an interpreter joins, my microphone audio may be sent to the configured external speech provider. Nastya does not store recordings or transcripts by default; external providers have separate retention policies.</span>
+    </label>
+    <button type="button" onClick={() => void join()} disabled={!consented || busy || !isRoomId(roomId)}>
       {busy ? "Connecting…" : "Join video call"}
     </button>
     {status && <p role="alert">{status}</p>}

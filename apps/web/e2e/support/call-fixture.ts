@@ -55,6 +55,7 @@ export async function createCallPair(browser: Browser): Promise<CallPair> {
 export async function joinCall(page: Page, language: "vi" | "ru"): Promise<void> {
   await expect(page.getByRole("heading", { name: "Join your video call" })).toBeVisible();
   await page.getByLabel("Spoken language").selectOption(language);
+  await page.getByRole("checkbox", { name: /I understand that camera\/microphone media/ }).check();
   await page.getByRole("button", { name: "Join video call" }).click();
   await expect(page.getByRole("heading", { name: "Video call", exact: true })).toBeVisible({
     timeout: 60_000,

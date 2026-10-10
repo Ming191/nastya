@@ -88,6 +88,7 @@ test("invalid or forged invitation cannot join a room", async ({ browser }) => {
   const pair = await createCallPair(browser);
   try {
     await pair.guest.goto("http://127.0.0.1:3000/call/" + pair.roomId + "#invite=invalid");
+    await pair.guest.getByRole("checkbox", { name: /I understand that camera\/microphone media/ }).check();
     await pair.guest.getByRole("button", { name: "Join video call" }).click();
     await expect(pair.guest.getByText("This invitation is invalid.", { exact: false }))
       .toBeVisible();
