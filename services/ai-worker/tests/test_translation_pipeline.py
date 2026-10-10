@@ -137,7 +137,7 @@ def test_model_failure_falls_back_to_explicit_source_only_without_cutting_call(f
 
         target_room = room()
         service = TranslationPipeline(
-            target_room, Broken(), is_current=lambda _: True, timeout_seconds=0.01
+            target_room, Broken(), is_current=lambda _: True, timeout_seconds=0.1
         )
         await service.process(segment(), Transcript("Xin chào", "vi"))
         parts = captions(target_room)
