@@ -25,8 +25,8 @@ def health(settings: Settings | None = None) -> dict[str, str | bool]:
 
 
 async def serve() -> None:
-    """Hold an idle process until the RTC adapter lands in NAS-11."""
-    logging.info("Worker started in bootstrap mode; RTC/AI integration is not yet installed")
+    """Hold an idle process until explicitly started with --room."""
+    logging.info("Idle worker: use --room <room-id> for LiveKit audio ingestion")
     try:
         while True:
             await asyncio.sleep(60)
@@ -60,6 +60,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Nastya worker and external AI API smoke tests")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--health", action="store_true", help="print process status as JSON")
+    group.add_argument("--room", metavar="ROOM_ID", help="subscribe one LiveKit room to remote STT")
     group.add_argument("--probe-translation", metavar="TEXT", help="translate sample text via API")
     group.add_argument("--probe-stt", metavar="WAV", help="transcribe WAV via API")
     parser.add_argument("--source", choices=("vi", "ru"), default="vi")
@@ -70,6 +71,10 @@ def main() -> None:
         logging.basicConfig(level=settings.log_level)
         if args.health:
             print(json.dumps(health(settings)))
+        elif args.room:
+            from nastya_worker.livekit_ingest import serve_room
+
+            asyncio.run(serve_room(args.room, settings))
         elif args.probe_translation is not None or args.probe_stt is not None:
             asyncio.run(probe(args, settings))
         else:

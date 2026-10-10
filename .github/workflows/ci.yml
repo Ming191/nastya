@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version-file: services/ai-worker/.python-version
-      - run: python -m pip install -e '.[dev]'
+      - run: python -m pip install -e '.[dev,rtc]'
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
@@ -50,7 +50,9 @@ jobs:
           python -c 'import socket,time; [(time.sleep(0.1)) for _ in range(20) if socket.socket().connect_ex(("127.0.0.1",8765)) != 0]'
           NASTYA_MT_URL=http://127.0.0.1:8765/v1/translate python -m nastya_worker.benchmark_remote mt --models mock-small,mock-large --output-dir /tmp/nastya-remote-bench-smoke --concurrency 2 --rounds 1
           python -c 'import json; r=json.load(open("/tmp/nastya-remote-bench-smoke/mt-benchmark-report.json")); assert r["corpus_count"] == 120 and len(r["results"]) == 2 and all(v["succeeded"] == 120 for v in r["results"].values())'
-      - run: python -m nastya_worker --health
+      - name: Validate LiveKit Python token generation and speaker isolation
+        run: python -m nastya_worker --health
+      - run: python -c 'from livekit import api,rtc; from nastya_worker.livekit_ingest import RoomAudioReceiver,worker_token; assert rtc.AudioStream and api.AccessToken and RoomAudioReceiver and worker_token'
 
   rtc:
     name: Local LiveKit / two-browser WebRTC
@@ -79,6 +81,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run synthetic two-client RTC acceptance suite
         run: npm run test:rtc
+      - name: Install Python worker with native LiveKit RTC SDK
+        run: |
+          python3 -m pip install --break-system-packages -e 'services/ai-worker[rtc]'
+      - name: Real SFU two-microphone interpreter ingress smoke
+        run: |
+          python3 services/ai-worker/tests/smoke_livekit_ingress.py
+
       - name: Upload sanitized RTC report and Playwright results
         if: always()
         uses: actions/upload-artifact@v4
