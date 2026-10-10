@@ -97,10 +97,12 @@ test("origin and Fetch Metadata block cross-site browser requests before capabil
   requireSameOrigin(new Request(expected + "/api/rooms", { method: "POST",
     headers: { origin: expected, "sec-fetch-site": "same-origin" } }), expected);
   for (const headers of [
-    { origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" },
-    { "sec-fetch-site": "same-site" }, { origin: "null" },
+    new Headers({ origin: "https://evil.example" }),
+    new Headers({ "sec-fetch-site": "cross-site" }),
+    new Headers({ "sec-fetch-site": "same-site" }),
+    new Headers({ origin: "null" }),
   ]) {
-    assert.throws(() => requireSameOrigin(new Request(expected, { method: "POST", headers: new Headers(headers) }), expected),
+    assert.throws(() => requireSameOrigin(new Request(expected, { method: "POST", headers }), expected),
       { code: "INVALID_ORIGIN" });
   }
 });
