@@ -37,6 +37,11 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+      - name: Validate RU/VI test corpus and deterministic evaluator
+        run: |
+          python -m nastya_worker.evaluate validate
+          python -m nastya_worker.evaluate baseline --output /tmp/nastya-eval-baseline.jsonl
+          python -m nastya_worker.evaluate score --predictions /tmp/nastya-eval-baseline.jsonl --system source-copy-control --output /tmp/nastya-eval-report.json
       - run: python -m nastya_worker --health
 
   rtc:

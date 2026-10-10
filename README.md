@@ -140,3 +140,17 @@ npm run test:rtc
 ```
 
 The test runner starts the Next.js app with local LiveKit development credentials. The isolated browser sessions use fake camera/microphone devices. Inspect the Playwright HTML report and attached redacted RTC statistics in `apps/web/playwright-report/`. These tests need Docker and a browser, not a cloud account or AI model. They do not measure cross-country latency or prove TURN relay availability.
+
+## RU/VI translation evaluation
+
+The repository includes a versioned synthetic **text-only** conversation test set at `services/ai-worker/evaluation/`. From `services/ai-worker` with the Python worker environment installed:
+
+```bash
+python -m nastya_worker.evaluate validate
+python -m nastya_worker.evaluate baseline --output /tmp/nastya-control.jsonl
+python -m nastya_worker.evaluate score --predictions /tmp/nastya-control.jsonl --system source-copy-control --output /tmp/nastya-eval.json
+python -m nastya_worker.evaluate review-template --predictions /tmp/nastya-control.jsonl --reviewer reviewer-1 --output /tmp/nastya-review.jsonl
+```
+
+Replace the control file with predictions from a hosted model: one JSON object per line, containing `id`, `hypothesis` and nullable `latency_ms`. Optional reviewed ratings can be supplied to `score` using `--reviews /path/to/completed-reviews.jsonl`. Fill the blank review template with integer scores before use. Do not treat the source-copy control or character-overlap proxy as semantic translation quality; reference translations are synthetic drafts pending bilingual review. Generated predictions, reports and reviews should remain outside the versioned corpus directory.
+
