@@ -89,17 +89,22 @@ async def main() -> None:
         assert set(receiver.readers) == {"human:owner", "human:guest"}, (
             "worker did not subscribe two distinct human microphone tracks"
         )
-        await asyncio.gather(
-            send_audio(owner_source, 11000, 20),
-            send_audio(guest_source, 12000, 20),
-        )
-        await asyncio.gather(
-            send_audio(owner_source, 0, 27),
-            send_audio(guest_source, 0, 27),
-        )
-        end = time.monotonic() + 10
-        while time.monotonic() < end and receiver.processed < 2:
-            await asyncio.sleep(0.1)
+        # Real RTC jitter/resampling can delay/drop boundary frames. Provide
+        # sufficient speech and trailing silence before checking STT delivery.
+        for attempt in range(2):
+            await asyncio.gather(
+                send_audio(owner_source, 11000, 32),
+                send_audio(guest_source, 12000, 32),
+            )
+            await asyncio.gather(
+                send_audio(owner_source, 0, 55),
+                send_audio(guest_source, 0, 55),
+            )
+            end = time.monotonic() + 6
+            while time.monotonic() < end and receiver.processed < 2:
+                await asyncio.sleep(0.1)
+            if receiver.processed >= 2:
+                break
         assert receiver.processed >= 2, "no complete per-speaker speech segments reached STT"
         assert receiver.failures == 0
         assert receiver.inference._value == 1
