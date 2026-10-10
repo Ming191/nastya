@@ -52,6 +52,10 @@ jobs:
           python -c 'import json; r=json.load(open("/tmp/nastya-remote-bench-smoke/mt-benchmark-report.json")); assert r["corpus_count"] == 120 and len(r["results"]) == 2 and all(v["succeeded"] == 120 for v in r["results"].values())'
       - name: Validate TTS CLI without external service
         run: python -m nastya_worker.tts_experiment --help
+      - name: Offline voice QA rubric generation (no synthesis)
+        run: |
+          python -m nastya_worker.voice_qa prepare --output-dir /tmp/nastya-voice-qa-smoke
+          python -c 'import json; p=json.load(open("/tmp/nastya-voice-qa-smoke/voice-review-blank.json")); assert len(p["cases"]) == 20 and all(x["clarity"] is None for x in p["cases"])'
       - name: Validate LiveKit Python token generation and speaker isolation
         run: python -m nastya_worker --health
       - run: python -c 'from livekit import api,rtc; from nastya_worker.livekit_ingest import RoomAudioReceiver,worker_token; assert rtc.AudioStream and api.AccessToken and RoomAudioReceiver and worker_token'
