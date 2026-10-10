@@ -51,8 +51,14 @@ def room():
 
 def segment(speaker="human:owner", language="vi", serial=1, generation=1):
     return Segment(
-        speaker, language, f"{speaker}:{generation}:{serial}",
-        100, 850, b"\0" * 6400, generation, time.monotonic()
+        speaker,
+        language,
+        f"{speaker}:{generation}:{serial}",
+        100,
+        850,
+        b"\0" * 6400,
+        generation,
+        time.monotonic(),
     )
 
 
@@ -79,8 +85,7 @@ def run(coro):
 class Translator:
     async def translate(self, text, source_language, target_language):
         return Translation(
-            "Привет" if source_language == "vi" else "Xin chào",
-            source_language, target_language
+            "Привет" if source_language == "vi" else "Xin chào", source_language, target_language
         )
 
 
@@ -113,8 +118,9 @@ def test_both_directions_publish_revision_zero_then_final_to_other_human_only():
             assert final[1]["reliable"] is True
         assert service.delivered == 2
         assert service.fallbacks == 0
-        assert all(o.speech_end_unix_ms is None and o.clock_error_bound_ms is None
-                   for o in observations)
+        assert all(
+            o.speech_end_unix_ms is None and o.clock_error_bound_ms is None for o in observations
+        )
         await service.shutdown()
 
     run(scenario())
@@ -184,9 +190,7 @@ def test_stale_network_epoch_must_not_publish_final_even_after_mt_returns():
                 await released.wait()
                 return Translation("Поздно", src, dst)
 
-        service = TranslationPipeline(
-            target_room, Slow(), is_current=lambda _: current
-        )
+        service = TranslationPipeline(target_room, Slow(), is_current=lambda _: current)
         task = asyncio.create_task(service.process(segment(), Transcript("Xin chào", "vi")))
         await started.wait()
         current = False
@@ -217,9 +221,7 @@ def test_lost_partial_and_retry_of_reliable_final_do_not_block_delivery():
 def test_status_has_strict_recipient_routing_and_no_transcript_or_token():
     async def scenario():
         target_room = room()
-        assert await publish_status(
-            target_room, "human:owner", "vi", "stt_unavailable"
-        ) == 1
+        assert await publish_status(target_room, "human:owner", "vi", "stt_unavailable") == 1
         packet, metadata = statuses(target_room)[0]
         assert metadata["topic"] == STATUS_TOPIC
         assert metadata["destination_identities"] == ["human:guest"]
@@ -239,19 +241,15 @@ def test_optional_tts_only_receives_successfully_delivered_translated_final():
     async def scenario():
         class Synth:
             async def synthesize(self, text, language, voice, uid):
-                return SynthesizedSpeech(
-                    uid, language, voice, "audio/mpeg", b"\xff\xfb\x01", 3, 6
-                )
+                return SynthesizedSpeech(uid, language, voice, "audio/mpeg", b"\xff\xfb\x01", 3, 6)
 
         target_room = room()
         service = TranslationPipeline(
-            target_room, Translator(), is_current=lambda _: True,
-            tts=OptionalTts(True, Synth())
+            target_room, Translator(), is_current=lambda _: True, tts=OptionalTts(True, Synth())
         )
         await service.process(segment(), Transcript("Xin chào", "vi"))
         await asyncio.sleep(0.02)
-        assert any(k["topic"] == VOICE_TOPIC
-                   for _, k in target_room.local_participant.packets)
+        assert any(k["topic"] == VOICE_TOPIC for _, k in target_room.local_participant.packets)
         await service.shutdown()
 
     run(scenario())
