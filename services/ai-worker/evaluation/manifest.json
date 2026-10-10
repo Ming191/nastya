@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "dataset_id": "nastya-ru-vi-conversation-v1",
+  "content_type": "synthetic_original_text",
+  "review_status": "draft_bilingual_review_pending",
+  "license_note": "No third-party audio or copyrighted source corpora; generated synthetic text for evaluation",
+  "audio_policy": "none_in_v1",
+  "files": [
+    "ru_vi_conversation_v1_vi.jsonl",
+    "ru_vi_conversation_v1_ru.jsonl"
+  ],
+  "expected_count": 120,
+  "expected_per_direction": 60,
+  "categories": [
+    "informal",
+    "questions",
+    "negation",
+    "names",
+    "fillers",
+    "numbers",
+    "code_switch",
+    "logistics",
+    "emotion",
+    "clarification"
+  ],
+  "contributions_policy": "Do not add personal transcripts, recorded calls or source material without a verified redistribution license and documented consent"
+}
