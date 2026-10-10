@@ -94,7 +94,8 @@ test("redeems role-scoped short-lived token for both VI and RU", async () => {
   assert.equal(jwt.video.roomJoin, true);
   assert.equal(jwt.video.canPublishData, false);
   assert.equal(jwt.video.roomAdmin, false);
-  assert.ok(jwt.exp - jwt.iat <= 300);
+  const currentTime = Math.floor(Date.now() / 1000);
+  assert.ok(jwt.exp > currentTime && jwt.exp <= currentTime + 300);
   assert.equal(jwt.attributes.sourceLanguage, "ru");
 });
 
