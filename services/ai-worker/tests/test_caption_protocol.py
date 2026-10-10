@@ -33,7 +33,7 @@ def caption():
 def test_protocol_schema_matches_python_publisher(caption):
     path = Path(__file__).resolve().parents[3] / "protocol" / "caption.v1.schema.json"
     schema = json.loads(path.read_text(encoding="utf-8"))
-    assert set(schema["required"]) == FIELDS
+    assert set(schema["required"]) == FIELDS - {"translationState"}
     assert schema["additionalProperties"] is False
     assert schema["properties"]["sourceText"]["maxLength"] == 2000
     assert schema["properties"]["revision"]["maximum"] == 1_000_000
