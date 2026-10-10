@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 type CreatedRoom = { roomId: string; ownerInvite: string; guestUrl: string };
@@ -35,7 +36,7 @@ export default function HomePage() {
       <p>Send this invitation to the other person:</p>
       <p><a href={room.guestUrl}>{room.guestUrl}</a></p>
       <button onClick={() => navigator.clipboard.writeText(room.guestUrl)}>Copy invite link</button>
-      <p><a href={"/call/" + room.roomId}>Continue as room owner</a></p>
+      <p><Link href={"/call/" + room.roomId}>Continue as room owner</Link></p>
     </section>}
     <p>Invitations expire after one hour. Room access uses temporary tokens.</p>
   </main>;

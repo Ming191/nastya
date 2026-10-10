@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
@@ -51,6 +52,6 @@ export default function RoomEntryPage() {
     </select>
     <p><button onClick={authorize} disabled={busy}>{busy ? "Connecting..." : "Authorize room access"}</button></p>
     {status && <p role="status">{status}</p>}
-    <p><a href="/">Back to home</a></p>
+    <p><Link href="/">Back to home</Link></p>
   </main>;
 }
