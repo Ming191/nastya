@@ -2,12 +2,27 @@
 
 import { Room, RoomEvent, type RemoteParticipant } from "livekit-client";
 import { useEffect, useState } from "react";
-import { CaptionStore, decodeCaption, type CaptionEvent } from "../lib/captions";
+import { CaptionStore, decodeCaption, decodeInterpreterStatus, type CaptionEvent, type InterpreterStatusCode } from "../lib/captions";
 import { languageLabel, type SpokenLanguage } from "../lib/call";
 
 function speakerLabel(speakerId: CaptionEvent["speakerId"]): string {
   return speakerId === "human:owner" ? "Owner" : "Guest";
 }
+
+const originalOnly = (caption: CaptionEvent) => caption.translationState === "source_only";
+const displayText = (caption: CaptionEvent) => caption.translationState === "pending"
+  ? caption.sourceText : caption.translatedText || caption.sourceText;
+const displayLanguage = (caption: CaptionEvent) =>
+  originalOnly(caption) || caption.translationState === "pending"
+    ? caption.sourceLanguage : caption.targetLanguage;
+const captionState = (caption: CaptionEvent) => originalOnly(caption)
+  ? "Original only · translation unavailable" : caption.isFinal ? "Translated" : "Original · translating";
+const statusLabel = (status: InterpreterStatusCode) => ({
+  ready: "Interpreter ready",
+  stt_unavailable: "Speech recognition unavailable; original call continues",
+  language_mismatch: "Speech language mismatch; check language selection",
+  translation_unavailable: "Translation unavailable; showing original speech",
+})[status];
 
 export function CaptionPanel({
   room, language,
@@ -18,6 +33,7 @@ export function CaptionPanel({
   const [enabled, setEnabled] = useState(true);
   const [store] = useState(() => new CaptionStore());
   const [captions, setCaptions] = useState<CaptionEvent[]>([]);
+  const [interpreterStatus, setInterpreterStatus] = useState<InterpreterStatusCode | null>(null);
 
   useEffect(() => {
     if (!enabled) {
@@ -32,13 +48,14 @@ export function CaptionPanel({
       topic?: string,
     ) => {
       if (!active) return;
-      const caption = decodeCaption(payload, {
-        topic: topic ?? "",
-        senderIdentity: participant?.identity,
-        roomId: room.name,
-        listenerLanguage: language,
-      });
+      const envelope = {
+        topic: topic ?? "", senderIdentity: participant?.identity,
+        roomId: room.name, listenerLanguage: language,
+      };
+      const caption = decodeCaption(payload, envelope);
       if (caption && store.receive(caption)) setCaptions(store.snapshot());
+      const status = decodeInterpreterStatus(payload, envelope);
+      if (status) setInterpreterStatus(status.code);
     };
     const invalidatePartials = () => {
       if (!active) return;
@@ -49,13 +66,20 @@ export function CaptionPanel({
       if (!active) return;
       store.clear();
       setCaptions([]);
+      setInterpreterStatus(null);
+    };
+    const interpreterLeft = (participant: { identity: string }) => {
+      // The interpreter may restart with a fresh sequence counter.
+      if (participant.identity === "interpreter") reset();
     };
     room.on(RoomEvent.DataReceived, receive);
+    room.on(RoomEvent.ParticipantDisconnected, interpreterLeft);
     room.on(RoomEvent.Reconnecting, invalidatePartials);
     room.on(RoomEvent.Disconnected, reset);
     return () => {
       active = false;
       room.off(RoomEvent.DataReceived, receive);
+      room.off(RoomEvent.ParticipantDisconnected, interpreterLeft);
       room.off(RoomEvent.Reconnecting, invalidatePartials);
       room.off(RoomEvent.Disconnected, reset);
       store.clear();
@@ -74,6 +98,7 @@ export function CaptionPanel({
         onClick={() => {
           store.clear();
           setCaptions([]);
+          setInterpreterStatus(null);
           setEnabled((value) => !value);
         }}>
         {enabled ? "Hide captions" : "Show captions"}
@@ -83,11 +108,11 @@ export function CaptionPanel({
     {enabled && <>
       <div className="caption-overlay" role="status" aria-live="polite" aria-atomic="true">
         {latest ? <>
-          <strong>{speakerLabel(latest.speakerId)} · {latest.isFinal ? "Final" : "Translating…"}</strong>
-          <p lang={latest.targetLanguage}>
-            {latest.translatedText || "Translating…"}
-          </p>
+          <strong>{speakerLabel(latest.speakerId)} · {captionState(latest)}</strong>
+          <p lang={displayLanguage(latest)}>{displayText(latest)}</p>
         </> : <p>Translated captions will appear when the interpreter is available.</p>}
+        {interpreterStatus && interpreterStatus !== "ready" &&
+          <p role="status">{statusLabel(interpreterStatus)}</p>}
       </div>
       <div className="caption-history" aria-label="Conversation captions" role="log" aria-live="off">
         {captions.slice(-16).map((caption) =>
@@ -95,9 +120,9 @@ export function CaptionPanel({
             className={"caption-entry " + (caption.isFinal ? "final" : "partial")}>
             <div className="caption-entry-heading">
               <strong>{speakerLabel(caption.speakerId)}</strong>
-              <span>{caption.isFinal ? "Final" : "Partial"}</span>
+              <span>{captionState(caption)}</span>
             </div>
-            <p lang={caption.targetLanguage}>{caption.translatedText || "Translating…"}</p>
+            <p lang={displayLanguage(caption)}>{displayText(caption)}</p>
           </article>
         )}
       </div>
