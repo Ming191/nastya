@@ -22,11 +22,11 @@ def _check_language(value: str) -> None:
         raise ValueError("language must be 'vi' or 'ru'")
 
 
-def _decode_text(payload: object, field: str) -> str:
+def _decode_text(payload: object, field: str, *, allow_empty: bool = False) -> str:
     if not isinstance(payload, dict):
         raise InferenceError("inference API response is not a JSON object")
     value = payload.get(field)
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or (not allow_empty and not value.strip()):
         raise InferenceError(f"inference API response must contain non-empty '{field}'")
     if len(value) > MAX_TEXT_CHARS:
         raise InferenceError("inference API response text is too long")
@@ -75,7 +75,7 @@ class HttpSpeechRecognizer:
             files={"file": ("speech.wav", wav, "audio/wav")},
             headers=headers,
         )
-        return Transcript(text=_decode_text(payload, "text"), language=language)
+        return Transcript(text=_decode_text(payload, "text", allow_empty=True), language=language)
 
 
 class HttpTranslator:
