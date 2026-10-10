@@ -159,4 +159,9 @@ test("source-only final cannot grant voice authorization", () => {
   assert.equal(assembler.accept({
     ...begin, type: "voice.chunk", index: 0, data: "AAE=",
   } as const), null);
+  assert.equal(assembler.accept({
+    version: 1, type: "voice.end", roomId: begin.roomId,
+    speakerId: begin.speakerId, utteranceId: begin.utteranceId,
+    sequence: begin.sequence, targetLanguage: begin.targetLanguage,
+  }), null);
 });
