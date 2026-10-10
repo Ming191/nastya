@@ -87,6 +87,8 @@ jobs:
       - name: Real SFU two-microphone interpreter ingress smoke
         run: |
           python3 services/ai-worker/tests/smoke_livekit_ingress.py
+      - name: Real SFU targeted caption data smoke
+        run: python3 services/ai-worker/tests/smoke_caption_data.py
 
       - name: Upload sanitized RTC report and Playwright results
         if: always()

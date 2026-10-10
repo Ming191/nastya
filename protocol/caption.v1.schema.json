@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nastya.invalid/protocol/caption.v1.schema.json",
+  "title": "Nastya caption upsert v1",
+  "description": "LiveKit topic nastya.caption.v1; only the privileged interpreter may publish. Transport sender identity and destination are checked separately.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "type",
+    "roomId",
+    "speakerId",
+    "utteranceId",
+    "revision",
+    "sequence",
+    "sourceLanguage",
+    "targetLanguage",
+    "sourceText",
+    "translatedText",
+    "isFinal",
+    "startOffsetMs",
+    "endOffsetMs"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "type": {
+      "const": "caption.upsert"
+    },
+    "roomId": {
+      "type": "string",
+      "pattern": "^nastya_[a-f0-9]{32}$"
+    },
+    "speakerId": {
+      "enum": [
+        "human:owner",
+        "human:guest"
+      ]
+    },
+    "utteranceId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9:_-]{1,96}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000
+    },
+    "sourceLanguage": {
+      "enum": [
+        "ru",
+        "vi"
+      ]
+    },
+    "targetLanguage": {
+      "enum": [
+        "ru",
+        "vi"
+      ]
+    },
+    "sourceText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "translatedText": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "isFinal": {
+      "type": "boolean"
+    },
+    "startOffsetMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400000
+    },
+    "endOffsetMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400000
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "sourceLanguage": {
+            "const": "ru"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "targetLanguage": {
+            "const": "vi"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sourceLanguage": {
+            "const": "vi"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "targetLanguage": {
+            "const": "ru"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "isFinal": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "translatedText": {
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}
