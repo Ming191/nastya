@@ -21,7 +21,16 @@ export async function createCallPair(browser: Browser): Promise<CallPair> {
   const guest = await guestContext.newPage();
   try {
     await owner.goto("/");
+    const creation = owner.waitForResponse((response) =>
+      response.url().endsWith("/api/rooms") && response.request().method() === "POST");
     await owner.getByRole("button", { name: "Create a private room" }).click();
+    const response = await creation;
+    if (!response.ok()) {
+      const result = await response.json() as { error?: { code?: string } };
+      // Never print successful bearer invitations or LiveKit credentials.
+      throw new Error("Room creation returned HTTP " + response.status() +
+        " / " + (result.error?.code ?? "UNKNOWN"));
+    }
     const invitation = owner.getByRole("region", { name: "Room invitation" });
     await expect(invitation).toBeVisible();
     const guestUrl = await invitation.getByRole("link").first().getAttribute("href");
