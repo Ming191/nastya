@@ -1,6 +1,7 @@
 import type { SpokenLanguage } from "./call";
 
 export const CAPTION_TOPIC = "nastya.caption.v1";
+export const INTERPRETER_STATUS_TOPIC = "nastya.interpreter-status.v1";
 const ROOM_ID = /^nastya_[a-f0-9]{32}$/;
 const UTTERANCE_ID = /^[A-Za-z0-9:_-]{1,96}$/;
 const SPEAKERS = ["human:owner", "human:guest"] as const;
@@ -21,6 +22,7 @@ export interface CaptionEvent {
   targetLanguage: SpokenLanguage;
   sourceText: string;
   translatedText: string;
+  translationState?: "pending" | "translated" | "source_only";
   isFinal: boolean;
   startOffsetMs: number;
   endOffsetMs: number;
@@ -46,8 +48,12 @@ export function parseCaption(value: unknown): CaptionEvent | null {
     "sourceLanguage", "targetLanguage", "sourceText", "translatedText", "isFinal",
     "startOffsetMs", "endOffsetMs",
   ];
-  if (Object.keys(p).length !== names.length ||
+  if (Object.keys(p).length !== names.length + (Object.prototype.hasOwnProperty.call(p, "translationState") ? 1 : 0) ||
       names.some((name) => !Object.prototype.hasOwnProperty.call(p, name))) return null;
+  if (p.translationState !== undefined &&
+      (p.translationState !== "pending" && p.translationState !== "translated" && p.translationState !== "source_only" ||
+      (p.translationState === "pending" && p.isFinal !== false) ||
+      (p.translationState !== "pending" && p.isFinal !== true))) return null;
   if (p.version !== 1 || p.type !== "caption.upsert" ||
       typeof p.roomId !== "string" || !ROOM_ID.test(p.roomId) ||
       typeof p.speakerId !== "string" || !SPEAKERS.some((speaker) => speaker === p.speakerId) ||
@@ -133,4 +139,37 @@ export class CaptionStore {
   get size(): number {
     return this.captions.size;
   }
+}
+
+
+export type InterpreterStatusCode = "ready" | "stt_unavailable" | "language_mismatch" | "translation_unavailable";
+export interface InterpreterStatus {
+  version: 1;
+  type: "interpreter.status";
+  roomId: string;
+  speakerId: CaptionEvent["speakerId"];
+  targetLanguage: SpokenLanguage;
+  code: InterpreterStatusCode;
+}
+
+/** Only data from the interpreter in this room and the recipient language is trusted. */
+export function decodeInterpreterStatus(data: Uint8Array, envelope: CaptionEnvelope): InterpreterStatus | null {
+  if (envelope.topic !== INTERPRETER_STATUS_TOPIC || envelope.senderIdentity !== "interpreter" ||
+      data.byteLength > MAX_CAPTION_BYTES) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data));
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const p = value as Record<string, unknown>;
+  const keys = ["version", "type", "roomId", "speakerId", "targetLanguage", "code"];
+  if (Object.keys(p).length !== keys.length || keys.some((name) => !Object.prototype.hasOwnProperty.call(p, name)) ||
+      p.version !== 1 || p.type !== "interpreter.status" ||
+      typeof p.roomId !== "string" || !ROOM_ID.test(p.roomId) || p.roomId !== envelope.roomId ||
+      typeof p.speakerId !== "string" || !SPEAKERS.some((v) => v === p.speakerId) ||
+      !isLanguage(p.targetLanguage) || p.targetLanguage !== envelope.listenerLanguage ||
+      !["ready", "stt_unavailable", "language_mismatch", "translation_unavailable"].includes(p.code as string)) return null;
+  return p as unknown as InterpreterStatus;
 }
