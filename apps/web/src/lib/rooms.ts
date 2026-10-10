@@ -26,12 +26,12 @@ export interface RoomAdmin {
   listRooms(names: string[]): Promise<Array<{ name: string; metadata: string }>>;
   listParticipants(room: string): Promise<Array<{ identity: string }>>;
 }
-function required(env: NodeJS.ProcessEnv, name: string): string {
+function required(env: Record<string, string | undefined>, name: string): string {
   const value = env[name];
   if (!value || value.trim() !== value) throw new RoomError("ROOM_SERVICE_NOT_CONFIGURED", 503);
   return value;
 }
-export function loadRoomConfig(env: NodeJS.ProcessEnv = process.env): RoomConfig {
+export function loadRoomConfig(env: Record<string, string | undefined> = process.env): RoomConfig {
   const publicUrl = required(env, "NASTYA_PUBLIC_ORIGIN");
   const wsUrl = required(env, "LIVEKIT_URL");
   let front: URL, rtc: URL;
