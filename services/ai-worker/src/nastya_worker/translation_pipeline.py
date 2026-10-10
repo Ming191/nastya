@@ -20,7 +20,9 @@ from nastya_worker.speaker_pipeline import Segment
 from nastya_worker.voice_transport import VoiceDelivery
 
 STATUS_TOPIC = "nastya.interpreter-status.v1"
-STATUS_CODES = frozenset({"ready", "stt_unavailable", "language_mismatch", "translation_unavailable"})
+STATUS_CODES = frozenset(
+    {"ready", "stt_unavailable", "language_mismatch", "translation_unavailable"}
+)
 MAX_TEXT = 2000
 
 
@@ -131,7 +133,9 @@ class TranslationPipeline:
                     sample_id=segment.utterance_id,
                     direction=segment.language + "-" + target_language(segment.language),
                     result=result,
-                    queue_age_ms=max(0, min(120000, round((time.monotonic() - segment.created_at) * 1000))),
+                    queue_age_ms=max(
+                        0, min(120000, round((time.monotonic() - segment.created_at) * 1000))
+                    ),
                     stable_caption_unix_ms=round(time.time() * 1000) if stable else None,
                 )
             )
@@ -145,7 +149,7 @@ class TranslationPipeline:
                 return 0
             try:
                 return await asyncio.wait_for(publish_caption(self.room, caption), timeout=2)
-            except (Exception, asyncio.CancelledError):
+            except Exception:
                 if attempt + 1 < attempts and self.active(segment):
                     await asyncio.sleep(0.1)
         return 0
@@ -229,7 +233,9 @@ class TranslationPipeline:
         else:
             await self._status(segment, "ready")
         self.delivered += published
-        self._observe(segment, "translated" if translated is not None else "source_only", published > 0)
+        self._observe(
+            segment, "translated" if translated is not None else "source_only", published > 0
+        )
 
         # Only verified translated finals may be synthesized, never source fallback.
         if published and translated is not None and segment.speaker in self.voices:
@@ -246,4 +252,6 @@ class TranslationPipeline:
 
     async def shutdown(self) -> None:
         self.closed = True
-        await asyncio.gather(*(voice.stop() for voice in self.voices.values()), return_exceptions=True)
+        await asyncio.gather(
+            *(voice.stop() for voice in self.voices.values()), return_exceptions=True
+        )
