@@ -2,7 +2,7 @@
 
 import { Room, RoomEvent, type RemoteParticipant } from "livekit-client";
 import { useEffect, useState } from "react";
-import { CAPTION_TOPIC, CaptionStore, decodeCaption, type CaptionEvent } from "../lib/captions";
+import { CaptionStore, decodeCaption, type CaptionEvent } from "../lib/captions";
 import { languageLabel, type SpokenLanguage } from "../lib/call";
 
 function speakerLabel(speakerId: CaptionEvent["speakerId"]): string {

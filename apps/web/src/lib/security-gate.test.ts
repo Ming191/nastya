@@ -4,7 +4,7 @@ import {
   memoryGate, redisGate, redisPost, requireSessionNonce, roleLeaseKey, securityGate,
 } from "./security-gate";
 import { jsonBody, requireSameOrigin, roomFailure, roomJson } from "./room-http";
-import { createPrivateRoom, loadRoomConfig, redeemInvite, RoomError, type RoomAdmin, type RoomConfig } from "./rooms";
+import { createPrivateRoom, redeemInvite, RoomError, type RoomAdmin, type RoomConfig } from "./rooms";
 
 const config: RoomConfig = {
   publicOrigin: "https://nastya.example", wsUrl: "wss://livekit.example",
@@ -100,7 +100,7 @@ test("origin and Fetch Metadata block cross-site browser requests before capabil
     { origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" },
     { "sec-fetch-site": "same-site" }, { origin: "null" },
   ]) {
-    assert.throws(() => requireSameOrigin(new Request(expected, { method: "POST", headers }), expected),
+    assert.throws(() => requireSameOrigin(new Request(expected, { method: "POST", headers: new Headers(headers) }), expected),
       { code: "INVALID_ORIGIN" });
   }
 });

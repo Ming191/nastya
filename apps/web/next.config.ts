@@ -17,7 +17,8 @@ const csp = [
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
   "frame-src 'none'",
-  "upgrade-insecure-requests",
+  ...(process.env.NASTYA_PUBLIC_ORIGIN?.startsWith("https://")
+    ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
