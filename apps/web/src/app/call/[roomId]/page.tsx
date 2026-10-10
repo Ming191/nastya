@@ -16,7 +16,7 @@ export default function RoomEntryPage() {
   const [language, setLanguage] = useState<SpokenLanguage>("ru");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [joined, setJoined] = useState<{ room: Room; participant: JoinResponse } | null>(null);
+  const [joined, setJoined] = useState<{ room: Room; participant: Pick<JoinResponse, "participantRole" | "sourceLanguage"> } | null>(null);
   const [canShare, setCanShare] = useState(false);
   const roomRef = useRef<Room | null>(null);
   const mounted = useRef(false);
@@ -97,7 +97,10 @@ export default function RoomEntryPage() {
         return;
       }
       setCanShare(!!guestShareUrl(url.origin, roomId, window.sessionStorage));
-      setJoined({ room: client, participant: result });
+      setJoined({ room: client, participant: {
+        participantRole: result.participantRole,
+        sourceLanguage: result.sourceLanguage,
+      } });
     } catch {
       if (client) {
         await client.disconnect(true);

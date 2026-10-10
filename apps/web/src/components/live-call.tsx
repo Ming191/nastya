@@ -204,9 +204,9 @@ export function LiveCall({
     setAction(kind);
     setOutputError("");
     try {
-      if (id && ((kind === "audioinput" && micOn) ||
-        (kind === "videoinput" && cameraOn) || kind === "audiooutput")) {
-        const success = await room.switchActiveDevice(kind, id);
+      if ((id && ((kind === "audioinput" && micOn) ||
+        (kind === "videoinput" && cameraOn))) || kind === "audiooutput") {
+        const success = await room.switchActiveDevice(kind, id || "default");
         if (success === false) throw new Error("device not supported");
       }
       setSelectedDevices((previous) => ({ ...previous, [kind]: id }));
