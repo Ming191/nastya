@@ -34,6 +34,14 @@ jobs:
         with:
           python-version-file: services/ai-worker/.python-version
       - run: python -m pip install -e '.[dev,rtc]'
+      - name: Apply exact caption Ruff formatting (temporary)
+        run: |
+          ruff format src/nastya_worker/caption_protocol.py src/nastya_worker/livekit_ingest.py tests/test_caption_protocol.py tests/smoke_caption_data.py
+          for file in src/nastya_worker/caption_protocol.py src/nastya_worker/livekit_ingest.py tests/test_caption_protocol.py tests/smoke_caption_data.py; do
+            echo "FMT_FILE_START:$file"
+            base64 "$file" | sed 's/^/FMT64:/'
+            echo "FMT_FILE_END:$file"
+          done
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q

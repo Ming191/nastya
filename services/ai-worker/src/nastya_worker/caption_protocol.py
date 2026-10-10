@@ -54,7 +54,8 @@ def validate_caption(event: Any) -> dict:
     if (not _int(start, 86_400_000) or not _int(end, 86_400_000) or
             end < start or end - start > 30_000):
         raise ValueError("invalid time range")
-    if len(json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > MAX_BYTES:
+    size = len(json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    if size > MAX_BYTES:
         raise ValueError("caption packet too large")
     return event
 
