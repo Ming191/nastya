@@ -61,8 +61,11 @@ def test_corpus_validation_rejects_duplicate_ids(tmp_path: Path, corpus):
 
 
 def test_v1_rejects_recorded_audio_without_consent_metadata(tmp_path: Path):
-    for filename in ("manifest.json", "ru_vi_conversation_v1_vi.jsonl",
-                     "ru_vi_conversation_v1_ru.jsonl"):
+    for filename in (
+        "manifest.json",
+        "ru_vi_conversation_v1_vi.jsonl",
+        "ru_vi_conversation_v1_ru.jsonl",
+    ):
         (tmp_path / filename).write_text(
             (DATASET_DIR / filename).read_text(encoding="utf-8"), encoding="utf-8"
         )
@@ -114,8 +117,10 @@ def test_prediction_validation_rejects_duplicate_bad_latency_and_unknown_id(tmp_
 
 def test_automatic_metric_is_a_reference_overlap_proxy_not_semantic_quality(corpus):
     manifest, rows = corpus
-    predictions = {r["id"]: {"id": r["id"], "hypothesis": r["reference_text"],
-                             "latency_ms": 100.0} for r in rows}
+    predictions = {
+        r["id"]: {"id": r["id"], "hypothesis": r["reference_text"], "latency_ms": 100.0}
+        for r in rows
+    }
     report = make_report(manifest, rows, predictions, [], "reference-echo-for-cli-sanity")
     assert report["automatic"]["coverage"] == 1
     assert report["automatic"]["character_overlap_f1_proxy"] == 1
@@ -130,9 +135,12 @@ def test_automatic_metric_is_a_reference_overlap_proxy_not_semantic_quality(corp
 def test_missing_predictions_explicitly_reduce_coverage(corpus):
     _, rows = corpus
     example = rows[0]
-    result = aggregate(rows, {
-        example["id"]: {"id": example["id"], "hypothesis": "", "latency_ms": None},
-    })
+    result = aggregate(
+        rows,
+        {
+            example["id"]: {"id": example["id"], "hypothesis": "", "latency_ms": None},
+        },
+    )
     assert result["prediction_records"] == 1
     assert result["nonempty_predictions"] == 0
     assert result["coverage"] == 0
@@ -145,10 +153,17 @@ def test_scoring_writes_stable_machine_readable_report(tmp_path: Path):
     baseline = tmp_path / "copied.jsonl"
     report = tmp_path / "report.json"
     run(parser.parse_args(["baseline", "--output", str(baseline)]))
-    args = parser.parse_args([
-        "score", "--predictions", str(baseline), "--system", "source-copy-control",
-        "--output", str(report),
-    ])
+    args = parser.parse_args(
+        [
+            "score",
+            "--predictions",
+            str(baseline),
+            "--system",
+            "source-copy-control",
+            "--output",
+            str(report),
+        ]
+    )
     result = run(args)
     assert result["human_status"] == "not_provided"
     data = json.loads(report.read_text(encoding="utf-8"))
@@ -165,10 +180,19 @@ def test_review_template_is_blank_and_requires_real_scores(tmp_path: Path, corpu
     baseline = tmp_path / "predictions.jsonl"
     template = tmp_path / "review.jsonl"
     run(parser.parse_args(["baseline", "--output", str(baseline)]))
-    run(parser.parse_args([
-        "review-template", "--predictions", str(baseline),
-        "--reviewer", "r1", "--output", str(template),
-    ]))
+    run(
+        parser.parse_args(
+            [
+                "review-template",
+                "--predictions",
+                str(baseline),
+                "--reviewer",
+                "r1",
+                "--output",
+                str(template),
+            ]
+        )
+    )
     record = json.loads(template.read_text(encoding="utf-8").splitlines()[0])
     assert record["meaning"] is None
     with pytest.raises(EvaluationError, match="meaning"):
@@ -177,12 +201,16 @@ def test_review_template_is_blank_and_requires_real_scores(tmp_path: Path, corpu
 
 def test_completed_reviews_and_critical_error_summary(tmp_path: Path, corpus):
     _, rows = corpus
-    predictions = {r["id"]: {"id": r["id"], "hypothesis": "abc", "latency_ms": None}
-                   for r in rows}
+    predictions = {r["id"]: {"id": r["id"], "hypothesis": "abc", "latency_ms": None} for r in rows}
     review = {
-        "id": rows[0]["id"], "reviewer": "reviewer-a",
-        "meaning": 3, "fluency": 4, "entities": 4,
-        "negation": 2, "severity": 3, "notes": "Negation inverted",
+        "id": rows[0]["id"],
+        "reviewer": "reviewer-a",
+        "meaning": 3,
+        "fluency": 4,
+        "entities": 4,
+        "negation": 2,
+        "severity": 3,
+        "notes": "Negation inverted",
     }
     path = tmp_path / "reviews.jsonl"
     path.write_text(json.dumps(review) + "\n", encoding="utf-8")
@@ -192,8 +220,7 @@ def test_completed_reviews_and_critical_error_summary(tmp_path: Path, corpus):
     assert summary["critical_error_ids"] == [rows[0]["id"]]
     assert summary["double_reviewed_items"] == 0
 
-    path.write_text(json.dumps(review) + "\n" + json.dumps(review) + "\n",
-                    encoding="utf-8")
+    path.write_text(json.dumps(review) + "\n" + json.dumps(review) + "\n", encoding="utf-8")
     with pytest.raises(EvaluationError, match="duplicate reviewer"):
         validate_reviews(rows, path, predictions)
 
@@ -201,7 +228,9 @@ def test_completed_reviews_and_critical_error_summary(tmp_path: Path, corpus):
 def test_no_implicit_generated_corpus_overwrite(tmp_path: Path):
     parser = build_parser()
     with pytest.raises(EvaluationError, match="outside the versioned corpus"):
-        run(parser.parse_args([
-            "baseline", "--output", str(DATASET_DIR / "generated-control.jsonl")
-        ]))
+        run(
+            parser.parse_args(
+                ["baseline", "--output", str(DATASET_DIR / "generated-control.jsonl")]
+            )
+        )
     assert not (DATASET_DIR / "generated-control.jsonl").exists()

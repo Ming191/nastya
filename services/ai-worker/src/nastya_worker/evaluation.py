@@ -11,19 +11,46 @@ from collections import Counter
 from pathlib import Path
 
 DATASET_DIR = Path(__file__).resolve().parents[2] / "evaluation"
-CATEGORIES = frozenset({
-    "informal", "questions", "negation", "names", "fillers",
-    "numbers", "code_switch", "logistics", "emotion", "clarification",
-})
-FIELDS = frozenset({
-    "id", "source_language", "target_language", "source_text",
-    "reference_text", "reference_meaning", "category", "audio_path", "provenance",
-})
+CATEGORIES = frozenset(
+    {
+        "informal",
+        "questions",
+        "negation",
+        "names",
+        "fillers",
+        "numbers",
+        "code_switch",
+        "logistics",
+        "emotion",
+        "clarification",
+    }
+)
+FIELDS = frozenset(
+    {
+        "id",
+        "source_language",
+        "target_language",
+        "source_text",
+        "reference_text",
+        "reference_meaning",
+        "category",
+        "audio_path",
+        "provenance",
+    }
+)
 PREDICTION_FIELDS = frozenset({"id", "hypothesis", "latency_ms"})
-REVIEW_FIELDS = frozenset({
-    "id", "reviewer", "meaning", "fluency", "entities",
-    "negation", "severity", "notes",
-})
+REVIEW_FIELDS = frozenset(
+    {
+        "id",
+        "reviewer",
+        "meaning",
+        "fluency",
+        "entities",
+        "negation",
+        "severity",
+        "notes",
+    }
+)
 
 
 class EvaluationError(ValueError):
@@ -40,9 +67,7 @@ def _read_jsonl(path: Path) -> list[dict]:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise EvaluationError(
-                        f"{path.name}:{line_number}: invalid JSON"
-                    ) from exc
+                    raise EvaluationError(f"{path.name}:{line_number}: invalid JSON") from exc
                 if not isinstance(record, dict):
                     raise EvaluationError(f"{path.name}:{line_number}: expected object")
                 rows.append(record)
@@ -112,8 +137,11 @@ def load_corpus(directory: Path = DATASET_DIR) -> tuple[dict, list[dict]]:
     expected_per_direction = manifest.get("expected_per_direction")
     if len(rows) != expected_count or expected_count != 120 or expected_per_direction != 60:
         raise EvaluationError("manifest count must match 120 balanced examples")
-    if any(distribution[(language, category)] != 6
-           for language in ("vi", "ru") for category in CATEGORIES):
+    if any(
+        distribution[(language, category)] != 6
+        for language in ("vi", "ru")
+        for category in CATEGORIES
+    ):
         raise EvaluationError("need six distinct examples per direction and category")
     return manifest, sorted(rows, key=lambda row: row["id"])
 
@@ -132,8 +160,10 @@ def validate_predictions(rows: list[dict], path: Path) -> dict[str, dict]:
             raise EvaluationError(f"{sample_id}: invalid hypothesis")
         latency = record["latency_ms"]
         if latency is not None and (
-            isinstance(latency, bool) or not isinstance(latency, int | float)
-            or not math.isfinite(latency) or latency < 0
+            isinstance(latency, bool)
+            or not isinstance(latency, int | float)
+            or not math.isfinite(latency)
+            or latency < 0
         ):
             raise EvaluationError(f"{sample_id}: invalid latency_ms")
         predictions[sample_id] = record
@@ -169,10 +199,11 @@ def validate_reviews(rows: list[dict], path: Path, predictions: dict[str, dict])
 
 def overlap_f1(reference: str, hypothesis: str) -> float:
     """Character 1-3gram F1 diagnostic, not chrF/BLEU or human judgment."""
+
     def grams(text: str, n: int) -> Counter[str]:
         normalized = unicodedata.normalize("NFC", text).casefold().strip()
         normalized = re.sub(r"\s+", " ", normalized)
-        return Counter(normalized[i:i+n] for i in range(max(0, len(normalized)-n+1)))
+        return Counter(normalized[i : i + n] for i in range(max(0, len(normalized) - n + 1)))
 
     scores = []
     for n in (1, 2, 3):
@@ -193,25 +224,42 @@ def percentile(values: list[float], percent: float) -> float | None:
     ordered = sorted(values)
     index = (len(ordered) - 1) * percent
     low, high = math.floor(index), math.ceil(index)
-    return ordered[low] * (high - index) + ordered[high] * (index - low) if low != high else ordered[low]
+    return (
+        ordered[low] * (high - index) + ordered[high] * (index - low)
+        if low != high
+        else ordered[low]
+    )
 
 
 def aggregate(rows: list[dict], predictions: dict[str, dict]) -> dict:
     count = len(rows)
-    scored = [r for r in rows if r["id"] in predictions and predictions[r["id"]]["hypothesis"].strip()]
-    latencies = [float(x["latency_ms"]) for x in predictions.values()
-                 if x["latency_ms"] is not None]
+    scored = [
+        r for r in rows if r["id"] in predictions and predictions[r["id"]]["hypothesis"].strip()
+    ]
+    latencies = [
+        float(x["latency_ms"]) for x in predictions.values() if x["latency_ms"] is not None
+    ]
 
     def summary(items: list[dict]) -> dict:
-        usable = [r for r in items if r["id"] in predictions
-                  and predictions[r["id"]]["hypothesis"].strip()]
+        usable = [
+            r
+            for r in items
+            if r["id"] in predictions and predictions[r["id"]]["hypothesis"].strip()
+        ]
         return {
-            "total": len(items), "nonempty_predictions": len(usable),
+            "total": len(items),
+            "nonempty_predictions": len(usable),
             "coverage": round(len(usable) / len(items), 4) if items else 0,
-            "character_overlap_f1_proxy": round(sum(
-                overlap_f1(r["reference_text"], predictions[r["id"]]["hypothesis"])
-                for r in usable
-            ) / len(usable), 4) if usable else None,
+            "character_overlap_f1_proxy": round(
+                sum(
+                    overlap_f1(r["reference_text"], predictions[r["id"]]["hypothesis"])
+                    for r in usable
+                )
+                / len(usable),
+                4,
+            )
+            if usable
+            else None,
         }
 
     return {
@@ -241,12 +289,15 @@ def summarize_reviews(reviews: list[dict], predictions: dict[str, dict]) -> dict
     if not reviews:
         return {"status": "not_provided", "rating_count": 0}
     counts: Counter[str] = Counter(r["id"] for r in reviews)
-    scores = {field: round(sum(r[field] for r in reviews)/len(reviews), 3)
-              for field in ("meaning", "fluency", "entities", "negation", "severity")}
+    scores = {
+        field: round(sum(r[field] for r in reviews) / len(reviews), 3)
+        for field in ("meaning", "fluency", "entities", "negation", "severity")
+    }
     critical = sorted({r["id"] for r in reviews if r["severity"] == 3})
     return {
-        "status": "double_reviewed" if len(counts) == len(predictions)
-                  and min(counts.values()) >= 2 else "provisional",
+        "status": "double_reviewed"
+        if len(counts) == len(predictions) and min(counts.values()) >= 2
+        else "provisional",
         "rating_count": len(reviews),
         "reviewed_items": len(counts),
         "double_reviewed_items": sum(n >= 2 for n in counts.values()),
@@ -258,8 +309,11 @@ def summarize_reviews(reviews: list[dict], predictions: dict[str, dict]) -> dict
 
 
 def make_report(
-    manifest: dict, rows: list[dict], predictions: dict[str, dict],
-    reviews: list[dict], system: str,
+    manifest: dict,
+    rows: list[dict],
+    predictions: dict[str, dict],
+    reviews: list[dict],
+    system: str,
 ) -> dict:
     if not system.strip() or len(system) > 100:
         raise EvaluationError("system name must be 1..100 characters")

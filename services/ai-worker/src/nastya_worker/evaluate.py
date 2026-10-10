@@ -31,8 +31,9 @@ def _write_json(path: Path, data: dict) -> None:
     if path.resolve().is_relative_to(DATASET_DIR.resolve()):
         raise EvaluationError("reports must be written outside the versioned corpus")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8")
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,7 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Synthetic RU/VI translation evaluation; not a translation model"
     )
     parser.add_argument(
-        "--dataset", type=Path, default=DATASET_DIR,
+        "--dataset",
+        type=Path,
+        default=DATASET_DIR,
         help="directory with manifest.json and versioned JSONL shards",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -76,33 +79,50 @@ def run(args: argparse.Namespace) -> dict:
             "audio_files": sum(r["audio_path"] is not None for r in rows),
         }
     if args.command == "baseline":
-        _write_jsonl(args.output, [
-            {"id": r["id"], "hypothesis": r["source_text"], "latency_ms": None}
-            for r in rows
-        ])
-        return {"written": len(rows), "output": str(args.output),
-                "warning": "SOURCE-COPY SANITY CONTROL; NOT A TRANSLATION MODEL"}
+        _write_jsonl(
+            args.output,
+            [{"id": r["id"], "hypothesis": r["source_text"], "latency_ms": None} for r in rows],
+        )
+        return {
+            "written": len(rows),
+            "output": str(args.output),
+            "warning": "SOURCE-COPY SANITY CONTROL; NOT A TRANSLATION MODEL",
+        }
     predictions = validate_predictions(rows, args.predictions)
     if args.command == "review-template":
         if not args.reviewer.strip() or len(args.reviewer) > 100:
             raise EvaluationError("reviewer identifier must be 1..100 characters")
-        _write_jsonl(args.output, [
-            {
-                "id": r["id"], "reviewer": args.reviewer, "meaning": None,
-                "fluency": None, "entities": None, "negation": None,
-                "severity": None, "notes": "",
-            }
-            for r in rows if r["id"] in predictions and predictions[r["id"]]["hypothesis"].strip()
-        ])
-        return {"reviewer": args.reviewer, "output": str(args.output),
-                "warning": "Complete all score fields before passing to --reviews"}
+        _write_jsonl(
+            args.output,
+            [
+                {
+                    "id": r["id"],
+                    "reviewer": args.reviewer,
+                    "meaning": None,
+                    "fluency": None,
+                    "entities": None,
+                    "negation": None,
+                    "severity": None,
+                    "notes": "",
+                }
+                for r in rows
+                if r["id"] in predictions and predictions[r["id"]]["hypothesis"].strip()
+            ],
+        )
+        return {
+            "reviewer": args.reviewer,
+            "output": str(args.output),
+            "warning": "Complete all score fields before passing to --reviews",
+        }
     if args.command == "score":
         reviews = validate_reviews(rows, args.reviews, predictions) if args.reviews else []
         report = make_report(manifest, rows, predictions, reviews, args.system)
         _write_json(args.output, report)
-        return {"report": str(args.output),
-                "prediction_records": len(predictions),
-                "human_status": report["human"]["status"]}
+        return {
+            "report": str(args.output),
+            "prediction_records": len(predictions),
+            "human_status": report["human"]["status"],
+        }
     raise EvaluationError("unknown evaluation command")
 
 
