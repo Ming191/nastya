@@ -169,7 +169,7 @@ python -m nastya_worker.benchmark_remote mt \
 
 Model IDs are passed to your server; **the remote service must actually host and select each model**. Outputs include model-specific predictions and a JSON report of coverage, response latency (p50/p95), concurrency and measured HTTP throughput. Automatic text overlap is **not** a substitute for independent bilingual review. There is no automatic server/GPU memory measurement or first streaming partial measurement.
 
-STT requires a separate **operator-supplied** JSON audio manifest and local PCM WAV fixtures with permission to use the recordings. The NAS-8 text corpus does not contain audio. The manifest schema is:
+STT requires a separate **operator-supplied** JSON audio manifest and local PCM WAV fixtures with permission to use the recordings. The versioned RU/VI text corpus does not contain audio. The manifest schema is:
 
 ```json
 {
