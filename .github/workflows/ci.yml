@@ -38,3 +38,44 @@ jobs:
       - run: ruff format --check .
       - run: pytest -q
       - run: python -m nastya_worker --health
+
+  rtc:
+    name: Local LiveKit / two-browser WebRTC
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install locked web and Playwright test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Start local LiveKit SFU
+        run: |
+          docker run -d --rm --network host --name nastya-livekit-e2e \
+            livekit/livekit-server:v1.13.7 --dev --bind 0.0.0.0
+          for attempt in $(seq 1 45); do
+            if curl --silent --max-time 2 --output /dev/null http://127.0.0.1:7880/; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs nastya-livekit-e2e
+          exit 1
+      - name: Install Chromium and browser dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Run synthetic two-client RTC acceptance suite
+        run: npm run test:rtc
+      - name: Upload sanitized RTC report and Playwright results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtc-local-playwright
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Stop test SFU
+        if: always()
+        run: docker stop nastya-livekit-e2e || true

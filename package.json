@@ -12,6 +12,7 @@
     "dev:web": "npm run dev -w @nastya/web",
     "build:web": "npm run build -w @nastya/web",
     "check:web": "npm run check -w @nastya/web",
-    "test:web": "npm run test -w @nastya/web"
+    "test:web": "npm run test -w @nastya/web",
+    "test:rtc": "npm run test:e2e -w @nastya/web"
   }
 }
