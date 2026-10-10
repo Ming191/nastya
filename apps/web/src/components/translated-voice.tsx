@@ -57,10 +57,7 @@ export function TranslatedVoice({
   }, [stop]);
 
   useEffect(() => {
-    if (!enabled) {
-      stop();
-      return;
-    }
+    if (!enabled) return;
     let active = true;
     const assembler = new VoiceAssembler();
     const handleAction = (action: VoiceAction) => {
@@ -93,7 +90,6 @@ export function TranslatedVoice({
     room.on(RoomEvent.Reconnecting, onDisconnect);
     room.on(RoomEvent.Disconnected, onDisconnect);
     room.on(RoomEvent.Reconnected, onDisconnect);
-    setStatus("waiting");
     return () => {
       active = false;
       room.off(RoomEvent.DataReceived, onData);
@@ -112,6 +108,7 @@ export function TranslatedVoice({
     try {
       await room.startAudio();
       setEnabled(true);
+      setStatus("waiting");
       if (status === "blocked" && urlRef.current) {
         try {
           await player.play();
