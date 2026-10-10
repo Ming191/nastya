@@ -35,6 +35,7 @@ class Settings:
     stt_model: str = "whisper-1"
     mt_model: str = ""
     http_timeout_seconds: float = 20.0
+    mt_timeout_seconds: float = 8.0
 
     @property
     def api_ready(self) -> bool:
@@ -51,6 +52,12 @@ class Settings:
             raise ValueError("NASTYA_HTTP_TIMEOUT_SECONDS must be numeric") from exc
         if not 0.1 <= timeout <= 120:
             raise ValueError("NASTYA_HTTP_TIMEOUT_SECONDS must be between 0.1 and 120")
+        try:
+            mt_timeout = float(os.getenv("NASTYA_MT_TIMEOUT_SECONDS", "8"))
+        except ValueError as exc:
+            raise ValueError("NASTYA_MT_TIMEOUT_SECONDS must be numeric") from exc
+        if not 0.1 <= mt_timeout <= 30:
+            raise ValueError("NASTYA_MT_TIMEOUT_SECONDS must be between 0.1 and 30")
         return cls(
             log_level=level,
             stt_url=_endpoint(os.getenv("NASTYA_STT_URL", ""), "NASTYA_STT_URL"),
@@ -60,4 +67,5 @@ class Settings:
             stt_model=os.getenv("NASTYA_STT_MODEL", "whisper-1"),
             mt_model=os.getenv("NASTYA_MT_MODEL", ""),
             http_timeout_seconds=timeout,
+            mt_timeout_seconds=mt_timeout,
         )
