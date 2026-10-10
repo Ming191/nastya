@@ -198,3 +198,17 @@ python -m nastya_worker.benchmark_remote stt \
 
 Optionally configure `NASTYA_VAD_URL` (and `NASTYA_VAD_API_KEY`) to evaluate a VAD endpoint accepting a WAV file via multipart upload and returning `{"segments":[{"start_ms":120,"end_ms":900}]}`. Compare the observed word/character errors and VAD boundaries using your annotated fixture corpus. First-partial streaming latency, GPU peak VRAM, true server queue latency and cross-region performance must be measured separately where supported by the model host.
 
+
+## One-room LiveKit interpreter (microphone ingestion)
+
+The worker runs on a separate computer from the web UI and makes **outbound** connections to LiveKit and a configured speech API. It does not need a GPU on this computer. In the Python worker directory:
+
+```bash
+python -m pip install -e '.[rtc]'
+# Configure LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+# NASTYA_STT_URL and optional NASTYA_STT_API_KEY in the worker environment.
+python -m nastya_worker --room nastya_0123456789abcdef0123456789abcdef
+```
+
+The room ID is the opaque ID returned by the room-creation API. Run **one** interpreter process per room. It joins under `interpreter`, subscribes exclusively to owner/guest microphone tracks, segments each independently, and forwards temporary WAV utterances to your external STT endpoint. It never records audio or transcripts on disk. Disconnect/reconnect invalidates stale segments. The VAD is an uncalibrated energy heuristic: tune its settings after measuring speech/noise cases with permitted recordings. Captions and translations are separate functionality; this command currently exercises audio ingestion and transcription only. Default `python -m nastya_worker` without `--room` remains idle.
+

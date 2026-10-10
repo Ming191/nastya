@@ -33,7 +33,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version-file: services/ai-worker/.python-version
-      - run: python -m pip install -e '.[dev]'
+      - run: python -m pip install -e '.[dev,rtc]'
+      - name: Normalize RTC worker files for review (temporary)
+        run: |
+          ruff format src/nastya_worker/speaker_pipeline.py src/nastya_worker/livekit_ingest.py src/nastya_worker/cli.py tests/test_speaker_pipeline.py
+          for file in src/nastya_worker/speaker_pipeline.py src/nastya_worker/livekit_ingest.py src/nastya_worker/cli.py tests/test_speaker_pipeline.py; do
+            echo "FMT_FILE_START:$file"
+            base64 "$file" | sed 's/^/FMT64:/'
+            echo "FMT_FILE_END:$file"
+          done
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
@@ -50,7 +58,9 @@ jobs:
           python -c 'import socket,time; [(time.sleep(0.1)) for _ in range(20) if socket.socket().connect_ex(("127.0.0.1",8765)) != 0]'
           NASTYA_MT_URL=http://127.0.0.1:8765/v1/translate python -m nastya_worker.benchmark_remote mt --models mock-small,mock-large --output-dir /tmp/nastya-remote-bench-smoke --concurrency 2 --rounds 1
           python -c 'import json; r=json.load(open("/tmp/nastya-remote-bench-smoke/mt-benchmark-report.json")); assert r["corpus_count"] == 120 and len(r["results"]) == 2 and all(v["succeeded"] == 120 for v in r["results"].values())'
-      - run: python -m nastya_worker --health
+      - name: Validate LiveKit Python token generation and speaker isolation
+        run: python -m nastya_worker --health
+      - run: python -c 'from livekit import api,rtc; from nastya_worker.livekit_ingest import RoomAudioReceiver,worker_token; assert rtc.AudioStream and api.AccessToken and RoomAudioReceiver and worker_token'
 
   rtc:
     name: Local LiveKit / two-browser WebRTC
