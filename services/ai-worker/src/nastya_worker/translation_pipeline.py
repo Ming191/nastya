@@ -115,7 +115,7 @@ class TranslationPipeline:
                 publish_status(self.room, segment.speaker, segment.language, code),
                 timeout=2,
             )
-        except (Exception, asyncio.CancelledError):
+        except Exception:
             # Signalling failure must not interrupt the human call or a final caption.
             pass
 
@@ -184,6 +184,9 @@ class TranslationPipeline:
             "startOffsetMs": segment.start_ms,
             "endOffsetMs": segment.end_ms,
         }
+        # Interrupt stale synthesized voice before showing a new utterance.
+        if segment.speaker in self.voices:
+            await self.voices[segment.speaker].stop()
         # A partial lets the recipient see that a phrase is being translated.
         await self._publish(segment, caption, retry=False)
         if not self.active(segment):
@@ -230,9 +233,12 @@ class TranslationPipeline:
 
         # Only verified translated finals may be synthesized, never source fallback.
         if published and translated is not None and segment.speaker in self.voices:
-            await self.voices[segment.speaker].replace(
-                final, DEFAULT_VOICE[final["targetLanguage"]]
-            )
+            try:
+                await self.voices[segment.speaker].replace(
+                    final, DEFAULT_VOICE[final["targetLanguage"]]
+                )
+            except Exception:
+                pass  # Voice transport must never downgrade successfully delivered text.
 
     async def stop_speaker(self, speaker: str) -> None:
         if speaker in self.voices:
