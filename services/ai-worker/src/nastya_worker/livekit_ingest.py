@@ -68,6 +68,7 @@ class RoomAudioReceiver:
         recognizer: HttpSpeechRecognizer,
         translator: Translator | None = None,
         tts: OptionalTts | None = None,
+        mt_timeout_seconds: float = 8.0,
     ):
         self.room = room
         self.rtc = rtc
@@ -81,7 +82,10 @@ class RoomAudioReceiver:
         self._active = True
         self._cancel_tasks: set[asyncio.Task] = set()
         self.translation = (
-            TranslationPipeline(room, translator, is_current=self._is_current, tts=tts)
+            TranslationPipeline(
+                room, translator, is_current=self._is_current,
+                tts=tts, timeout_seconds=mt_timeout_seconds
+            )
             if translator is not None else None
         )
 
@@ -244,7 +248,9 @@ async def serve_room(room_id: str, settings: Settings) -> None:
         while True:
             room = rtc.Room()
             tts = tts_config.build() if tts_config.enabled else None
-            receiver = RoomAudioReceiver(room, rtc, recognizer, translator, tts)
+            receiver = RoomAudioReceiver(
+                room, rtc, recognizer, translator, tts, settings.mt_timeout_seconds
+            )
             receiver.register()
             try:
                 await room.connect(
