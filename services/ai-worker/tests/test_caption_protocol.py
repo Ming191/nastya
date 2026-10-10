@@ -122,3 +122,16 @@ def test_send_only_to_matching_other_human_and_reliable_final(caption):
             await publish_caption(room, final)
 
     asyncio.run(run())
+
+
+def test_optional_translation_state_is_strict_and_legacy_v1_remains_compatible(caption):
+    assert validate_caption(caption) == caption
+    assert validate_caption({**caption, "translationState": "pending"})
+    with pytest.raises(ValueError, match="state"):
+        validate_caption({**caption, "translationState": "source_only"})
+    with pytest.raises(ValueError, match="state"):
+        validate_caption({**caption, "translationState": "unknown"})
+    complete = {**caption, "isFinal": True, "translatedText": "Xin chào"}
+    assert validate_caption({**complete, "translationState": "source_only"})
+    with pytest.raises(ValueError, match="state"):
+        validate_caption({**complete, "translationState": "pending"})
