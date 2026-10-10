@@ -134,3 +134,29 @@ test("reconnect/disable resets inflight buffered audio, independent target langu
   assert.ok(decodeVoice(payload(wrong), { ...scope, listenerLanguage: "vi" }));
   assert.equal(decodeVoice(payload(wrong), scope), null);
 });
+
+
+test("source-only final cannot grant voice authorization", () => {
+  const assembler = new VoiceAssembler();
+  const sourceOnly = {
+    version: 1 as const, type: "caption.upsert" as const,
+    roomId: "nastya_" + "a".repeat(32),
+    speakerId: "human:owner" as const,
+    utteranceId: "human:owner:2:12", revision: 1, sequence: 12,
+    sourceLanguage: "vi" as const, targetLanguage: "ru" as const,
+    sourceText: "Xin chào", translatedText: "Xin chào", translationState: "source_only" as const,
+    isFinal: true, startOffsetMs: 0, endOffsetMs: 900,
+  };
+  assembler.noteCaption(sourceOnly);
+  const begin = {
+    version: 1 as const, type: "voice.begin" as const,
+    roomId: sourceOnly.roomId, speakerId: sourceOnly.speakerId,
+    utteranceId: sourceOnly.utteranceId, sequence: sourceOnly.sequence,
+    targetLanguage: "ru" as const, mimeType: "audio/mpeg" as const,
+    byteLength: 2, chunkCount: 1,
+  };
+  assert.equal(assembler.accept(begin), null);
+  assert.equal(assembler.accept({
+    ...begin, type: "voice.chunk", index: 0, data: "AAE=",
+  } as const), null);
+});
