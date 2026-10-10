@@ -21,6 +21,8 @@ export async function createCallPair(browser: Browser): Promise<CallPair> {
   const guest = await guestContext.newPage();
   try {
     await owner.goto("/");
+    // Wait for Next.js client hydration before dispatching an interactive click.
+    await owner.waitForTimeout(650);
     const creation = owner.waitForResponse((response) =>
       response.url().endsWith("/api/rooms") && response.request().method() === "POST");
     await owner.getByRole("button", { name: "Create a private room" }).click();
