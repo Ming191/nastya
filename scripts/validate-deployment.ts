@@ -131,6 +131,7 @@ async function mediaRun(browser: Browser, label: string, seconds: number, mobile
 }
 
 async function main() {
+await mkdir(output, { recursive: true });
 const browser=await chromium.launch({headless:true,args:["--use-fake-device-for-media-stream","--use-fake-ui-for-media-stream","--autoplay-policy=no-user-gesture-required"]});
 report.browser=browser.version();
 try {
