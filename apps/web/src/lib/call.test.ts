@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  getMediaError, guestShareUrl, isHumanIdentity, isRoomId,
+  getMediaError, getMediaErrorWithPermission, guestShareUrl, isHumanIdentity, isRoomId,
   languageLabel, readRoomInvite,
 } from "./call";
 
@@ -75,4 +75,25 @@ test("returns usable device permission and availability errors", () => {
   assert.match(getMediaError({ name: "NotReadableError" }, "camera"), /busy/);
   assert.match(getMediaError(new Error("private user text"), "camera"), /Unable to use/);
   assert.ok(!getMediaError(new Error("private user text"), "camera").includes("private"));
+});
+
+test("actual denied permission gives browser-settings guidance even for generic capture errors", async () => {
+  for (const device of ["camera", "microphone"] as const) {
+    const message = await getMediaErrorWithPermission(new Error("private capture details"), device,
+      async (queried) => { assert.equal(queried, device); return "denied"; });
+    assert.equal(message, "Access to the " + device + " was denied. Enable it in browser settings.");
+    assert.ok(!message.includes("private"));
+  }
+});
+
+test("unsupported, prompt or granted permission queries preserve the capture error classification", async () => {
+  for (const permission of [null, "prompt", "granted"] as const) {
+    assert.match(await getMediaErrorWithPermission({ name: "NotFoundError" }, "camera",
+      async () => permission), /No usable/);
+    assert.match(await getMediaErrorWithPermission(new Error("private capture details"), "microphone",
+      async () => permission), /Unable to use/);
+  }
+  const unsupported = async (): Promise<never> => { throw new TypeError("Unsupported permission name"); };
+  assert.match(await getMediaErrorWithPermission({ name: "NotAllowedError" }, "microphone", unsupported), /denied/);
+  assert.match(await getMediaErrorWithPermission({ name: "NotReadableError" }, "camera", unsupported), /busy/);
 });

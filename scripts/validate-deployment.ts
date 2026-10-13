@@ -197,6 +197,10 @@ try {
         throw new Error("Permission denied notice missing; visible alerts: "+notices.join(" | "));
       await expect(p.owner.getByText("Access to the microphone was denied.",{exact:false})).toBeVisible();
       await expect(p.owner.getByText("Access to the camera was denied.",{exact:false})).toBeVisible();
+      await p.owner.getByRole("button",{name:"Turn mic on"}).click();
+      await expect(p.owner.getByText("Access to the microphone was denied.",{exact:false})).toBeVisible();
+      await p.owner.getByRole("button",{name:"Turn camera on"}).click();
+      await expect(p.owner.getByText("Access to the camera was denied.",{exact:false})).toBeVisible();
       return {permissions:permission,receiveOnlyVideo:true,permissionErrorsVisible:true};
     }finally{await p.close();await deniedBrowser.close();}
   });
