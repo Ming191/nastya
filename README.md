@@ -27,6 +27,34 @@ npm run check:web
 npm run build:web
 ```
 
+## Vercel deployment
+
+Import this repository into a Vercel project with **Root Directory** `apps/web`,
+framework **Next.js**, and Node.js **22.x**. Include source files outside the root
+directory so npm can use the repository workspace lockfile. The app's
+`vercel.json` configures the build and a single Singapore function region.
+
+Before deploying, set these environment variables in Vercel's **Production**
+environment (use Secret/sensitive values for credentials):
+
+- `NASTYA_PUBLIC_ORIGIN`: the exact HTTPS production URL, without a path.
+- `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`: your LiveKit project.
+- `NASTYA_INVITE_SECRET`: a dedicated random signing key of at least 32 bytes.
+- `NASTYA_REDIS_REST_URL`, `NASTYA_REDIS_REST_TOKEN`: your Redis REST instance.
+- `NASTYA_LIVEKIT_CONNECT_ORIGINS`: exact regional LiveKit HTTPS/WSS origins,
+  when required by your deployment's routing.
+
+Use independent credentials for Preview if enabling preview room access. Missing
+credentials leave room creation/join unavailable. Changes to connection origins
+require a new build. Confirm `/api/health` responds, create a room and test a
+two-browser call after deployment. Configure trusted-edge request protection
+before sharing the app publicly.
+
+Run the Python interpreter on your own computer using the worker instructions
+below; it is not hosted in a Vercel function. It needs outbound access to LiveKit
+and configured STT/translation providers. Avoid sharing room invites or secrets
+in logs. Review each provider's recording and retention settings.
+
 ## Python worker
 
 ```bash
