@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import httpx
 
 from nastya_worker.config import Settings
-from nastya_worker.providers.http import HttpSpeechRecognizer, HttpTranslator
+from nastya_worker.providers.http import (
+    ChatCompletionTranslator,
+    HttpSpeechRecognizer,
+    HttpTranslator,
+)
 from nastya_worker.providers.types import SpeechRecognizer, Translator
 
 
@@ -15,6 +19,11 @@ from nastya_worker.providers.types import SpeechRecognizer, Translator
 class InferenceGateway:
     stt: SpeechRecognizer
     mt: Translator
+
+
+def make_translator(client: httpx.AsyncClient, settings: Settings) -> Translator:
+    adapter = ChatCompletionTranslator if settings.mt_provider == "chat" else HttpTranslator
+    return adapter(client, settings.mt_url, settings.mt_api_key, settings.mt_model)
 
 
 @asynccontextmanager
@@ -29,7 +38,11 @@ async def open_gateway(
     ) as client:
         yield InferenceGateway(
             stt=HttpSpeechRecognizer(
-                client, settings.stt_url, settings.stt_api_key, settings.stt_model
+                client,
+                settings.stt_url,
+                settings.stt_api_key,
+                settings.stt_model,
+                settings.stt_min_interval_seconds,
             ),
-            mt=HttpTranslator(client, settings.mt_url, settings.mt_api_key, settings.mt_model),
+            mt=make_translator(client, settings),
         )

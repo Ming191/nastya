@@ -229,6 +229,30 @@ Optionally configure `NASTYA_VAD_URL` (and `NASTYA_VAD_API_KEY`) to evaluate a V
 
 ## One-room LiveKit interpreter (microphone ingestion)
 
+### Groq API on a local Windows worker
+
+In `services/ai-worker`, install with `uv sync --extra rtc` and create the
+ignored `.env.local` file using `.env.example`. Set:
+
+```dotenv
+NASTYA_STT_URL=https://api.groq.com/openai/v1/audio/transcriptions
+NASTYA_STT_MODEL=whisper-large-v3-turbo
+NASTYA_MT_URL=https://api.groq.com/openai/v1/chat/completions
+NASTYA_MT_PROVIDER=chat
+NASTYA_MT_MODEL=qwen/qwen3.8-27b
+NASTYA_STT_MIN_INTERVAL_SECONDS=3.2
+```
+
+Set both `NASTYA_STT_API_KEY` and `NASTYA_MT_API_KEY` to the Groq key, plus
+the three LiveKit variables. Run `./start-worker.ps1` to discover active Nastya
+rooms automatically, or `./start-worker.ps1 -RoomId nastya_<32 hex characters>`
+to serve a specific room. `./start-worker.ps1 -Health` checks configuration only.
+The watcher serves one call at a time, polls every five seconds and releases
+the room when no owner or guest remains. Run only one watcher for this project.
+Keep this computer running and connected during calls. Groq quotas apply;
+the shared STT pacing introduces queue delay under simultaneous speech.
+Keep API keys on this worker, outside the browser and source control.
+
 The worker runs on a separate computer from the web UI and makes **outbound** connections to LiveKit and a configured speech API. It does not need a GPU on this computer. In the Python worker directory:
 
 ```bash

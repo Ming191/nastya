@@ -10,7 +10,8 @@ from typing import Any
 import httpx
 
 from nastya_worker.config import Settings
-from nastya_worker.providers.http import HttpSpeechRecognizer, HttpTranslator
+from nastya_worker.providers.gateway import make_translator
+from nastya_worker.providers.http import HttpSpeechRecognizer
 from nastya_worker.providers.tts import OptionalTts
 from nastya_worker.providers.types import Translator
 from nastya_worker.speaker_pipeline import HUMANS, SpeakerPipeline, source_language
@@ -244,9 +245,13 @@ async def serve_room(room_id: str, settings: Settings) -> None:
     tts_config = TtsSettings.from_env()
     async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
         recognizer = HttpSpeechRecognizer(
-            client, settings.stt_url, settings.stt_api_key, settings.stt_model
+            client,
+            settings.stt_url,
+            settings.stt_api_key,
+            settings.stt_model,
+            settings.stt_min_interval_seconds,
         )
-        translator = HttpTranslator(client, settings.mt_url, settings.mt_api_key, settings.mt_model)
+        translator = make_translator(client, settings)
         while True:
             room = rtc.Room()
             tts = tts_config.build() if tts_config.enabled else None

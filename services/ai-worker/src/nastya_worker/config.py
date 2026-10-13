@@ -34,6 +34,8 @@ class Settings:
     mt_api_key: str = ""
     stt_model: str = "whisper-1"
     mt_model: str = ""
+    mt_provider: str = "http"
+    stt_min_interval_seconds: float = 0
     http_timeout_seconds: float = 20.0
     mt_timeout_seconds: float = 8.0
 
@@ -58,6 +60,17 @@ class Settings:
             raise ValueError("NASTYA_MT_TIMEOUT_SECONDS must be numeric") from exc
         if not 0.1 <= mt_timeout <= 30:
             raise ValueError("NASTYA_MT_TIMEOUT_SECONDS must be between 0.1 and 30")
+        provider = os.getenv("NASTYA_MT_PROVIDER", "http")
+        if provider not in {"http", "chat"}:
+            raise ValueError("NASTYA_MT_PROVIDER must be http or chat")
+        try:
+            interval = float(os.getenv("NASTYA_STT_MIN_INTERVAL_SECONDS", "0"))
+        except ValueError as exc:
+            raise ValueError("NASTYA_STT_MIN_INTERVAL_SECONDS must be numeric") from exc
+        if not 0 <= interval <= 60:
+            raise ValueError("NASTYA_STT_MIN_INTERVAL_SECONDS must be between 0 and 60")
+        if provider == "chat" and not os.getenv("NASTYA_MT_MODEL", "").strip():
+            raise ValueError("NASTYA_MT_MODEL is required for chat translation")
         return cls(
             log_level=level,
             stt_url=_endpoint(os.getenv("NASTYA_STT_URL", ""), "NASTYA_STT_URL"),
@@ -66,6 +79,8 @@ class Settings:
             mt_api_key=os.getenv("NASTYA_MT_API_KEY", ""),
             stt_model=os.getenv("NASTYA_STT_MODEL", "whisper-1"),
             mt_model=os.getenv("NASTYA_MT_MODEL", ""),
+            mt_provider=provider,
+            stt_min_interval_seconds=interval,
             http_timeout_seconds=timeout,
             mt_timeout_seconds=mt_timeout,
         )
