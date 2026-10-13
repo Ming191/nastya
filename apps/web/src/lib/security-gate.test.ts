@@ -42,6 +42,8 @@ test("production never falls back to in-memory when Redis credentials absent or 
     { code: "ROOM_SERVICE_NOT_CONFIGURED" });
   const local = { ...config, publicOrigin: "http://127.0.0.1:3000" };
   assert.ok(securityGate(local, {}));
+  assert.throws(() => securityGate(local, { NODE_ENV: "production" }),
+    { code: "ROOM_SERVICE_NOT_CONFIGURED" });
 });
 
 test("distributed Redis EVAL implements atomic quota + role lease across replicas", async () => {
@@ -84,11 +86,23 @@ test("Redis HTTP response errors and invalid JSON fail CLOSED without logging cr
     assert.equal(String(request), url);
     assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer " + secret);
     assert.equal(init?.cache, "no-store");
+    assert.equal(init?.redirect, "error");
     return Response.json({ result: 1 });
   });
   assert.equal(await good(["EVAL", "return 1", 0]), 1);
   const invalid = redisPost(url, secret, async () => Response.json({ error: "invalid Lua script" }));
   await assert.rejects(invalid(["EVAL", "bad", 0]), { code: "ROOM_SERVICE_NOT_CONFIGURED" });
+});
+
+test("Redis redirects are rejected without retrying a different backend", async () => {
+  let calls = 0;
+  const post = redisPost("https://redis.example/", "private-test-redis-rest-token", async (_url, init) => {
+    calls++;
+    assert.equal(init?.redirect, "error");
+    return new Response(null, { status: 307, headers: { Location: "https://other.example/" } });
+  });
+  await assert.rejects(post(["EVAL", "return 1", 0]), { code: "ROOM_SERVICE_NOT_CONFIGURED" });
+  assert.equal(calls, 1);
 });
 
 test("origin and Fetch Metadata block cross-site browser requests before capability use", () => {

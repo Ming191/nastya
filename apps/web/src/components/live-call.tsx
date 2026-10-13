@@ -77,6 +77,7 @@ export function LiveCall({
   canShare: boolean;
 }) {
   const [revision, setRevision] = useState(0);
+  const mediaRun = useRef(0);
   const [connection, setConnection] = useState<CallConnection>("connected");
   const [peerPresence, setPeerPresence] = useState<PeerPresence>(() =>
     Array.from(room.remoteParticipants.values()).some((p) => isHumanIdentity(p.identity))
@@ -102,6 +103,7 @@ export function LiveCall({
 
   useEffect(() => {
     let active = true;
+    const run = ++mediaRun.current;
     const refresh = () => {
       if (active) setRevision((value) => value + 1);
     };
@@ -159,7 +161,9 @@ export function LiveCall({
       ]);
       if (!active) {
         // Permission prompts may settle after leave/unmount; close any late tracks.
-        await disconnectRoomOnce(room);
+        // React development Strict Mode replays this effect on the same room.
+        // The newer run owns its media; an older run must not disconnect it.
+        if (mediaRun.current === run) await disconnectRoomOnce(room);
         return;
       }
       setMediaErrors({

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { rtcConnectSources } from "./src/lib/security-headers";
 
 // Keep room bearer links out of Referer, browser cache and other origins.
 const csp = [
@@ -13,7 +14,7 @@ const csp = [
   // Next.js hydration includes framework inline scripts; migrate to nonce-based
   // strict-dynamic policy at a later deployment stage.
   "script-src 'self' 'unsafe-inline'" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
-  "connect-src 'self' https: wss: ws://localhost:7880 ws://127.0.0.1:7880",
+  "connect-src " + rtcConnectSources(process.env),
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
   "frame-src 'none'",

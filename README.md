@@ -112,7 +112,7 @@ Alternatively, create/redeem rooms using JSON over HTTPS:
 curl -X POST http://localhost:3000/api/rooms
 curl -X POST http://localhost:3000/api/rooms/join \
   -H 'Content-Type: application/json' \
-  -d '{"version":1,"roomId":"...","invite":"...","preferredLanguage":"vi"}'
+  -d '{"version":1,"roomId":"...","invite":"...","preferredLanguage":"vi","sessionNonce":"your-lowercase-uuid-v4"}'
 ```
 
 Keep owner invitations private. Guest links are bearer credentials: anyone with a valid link can request the guest role while it is unoccupied. Per-process throttling is only a basic abuse backstop; use trusted edge rate limits for public deployment.
@@ -287,11 +287,11 @@ Current production calls do not export such traces automatically.
 
 ## Room security settings
 
-For any public deployment, configure the server-only `NASTYA_REDIS_REST_URL`
+For production (including loopback origins) or any public deployment, configure the server-only `NASTYA_REDIS_REST_URL`
 and `NASTYA_REDIS_REST_TOKEN` credentials (from a private Redis REST
 deployment with atomic Lua EVAL), in addition to the LiveKit and invite-signing
 variables. The app **rejects all room creation and join requests** if the shared
-security store is missing or unavailable. Local HTTP loopback testing uses a
+security store is missing or unavailable. Non-production local HTTP loopback testing uses a
 process-local security store and must **never** be exposed to the public internet.
 
 Creation is limited globally to 60 requests/minute and joins to 300/minute in
@@ -307,6 +307,16 @@ track sources from human participants, not arbitrary AI data packets.
 
 Browser and API responses have no-referrer, nosniff, anti-framing and CSP
 policies. The user must affirm the media/AI processing notice before joining.
+
+Set `LIVEKIT_URL` before building the web app: browser CSP allows that exact
+WebSocket origin and its HTTP/HTTPS equivalent. If the LiveKit deployment routes
+clients to additional regional hosts, add their exact HTTPS/WSS origins to the
+comma-separated `NASTYA_LIVEKIT_CONNECT_ORIGINS` build environment variable.
+Rebuild after changing these settings. Wildcards and arbitrary HTTPS/WSS hosts
+are rejected. Redis REST redirects are rejected; use its direct HTTPS endpoint.
+CLI callers must generate a lowercase UUIDv4 `sessionNonce` and retain the same
+value to rejoin the same room/role.
+
 Neither the app nor the model worker persist call audio or transcripts by
 default; configured inference providers and LiveKit may have separate data
 retention rules. Review those providers and obtain user consent before use.
