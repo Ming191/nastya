@@ -253,6 +253,23 @@ Keep this computer running and connected during calls. Groq quotas apply;
 the shared STT pacing introduces queue delay under simultaneous speech.
 Keep API keys on this worker, outside the browser and source control.
 
+To run the opt-in deployed caption check from the repository root:
+
+```powershell
+$env:NASTYA_CAPTION_SMOKE_WORKER_ENV = (Resolve-Path services/ai-worker/.env.local).Path
+$env:NASTYA_CAPTION_SMOKE_MODE = 'translated' # or mt-failure / mt-timeout
+npx tsx scripts/validate-captions.ts https://your-app.example vi.wav ru.wav C:/temp/caption-check
+```
+
+Supply original synthetic WAV fixtures: Vietnamese "Xin chào. Ngày mai chúng ta
+gặp nhau lúc chín giờ." and Russian "Привет. Завтра мы встретимся в девять часов."
+Use mono 48 kHz PCM16, 25 seconds of leading silence and 50 seconds of trailing
+silence so the interpreter can attach before speech. The script uses fake
+microphones, creates a separate test room and starts/stops its own worker.
+Failure modes replace only that worker's translation endpoint with a local
+HTTP failure or timeout. Reports contain timings and result flags, without
+captions, invitations or keys. Never supply private call recordings as fixtures.
+
 The worker runs on a separate computer from the web UI and makes **outbound** connections to LiveKit and a configured speech API. It does not need a GPU on this computer. In the Python worker directory:
 
 ```bash
