@@ -2,7 +2,6 @@
 
 import argparse
 import asyncio
-import contextvars
 import ctypes
 import json
 import os
@@ -13,10 +12,10 @@ from nastya_worker.config import Settings
 from nastya_worker.livekit_ingest import RoomAudioReceiver, serve_room
 from nastya_worker.providers import http
 from nastya_worker.providers.local import LocalSpeechRecognizer
-from nastya_worker.speaker_pipeline import SpeakerPipeline
+from nastya_worker.speaker_pipeline import PROCESSING_UTTERANCE_ID, SpeakerPipeline
 from nastya_worker.translation_pipeline import TranslationPipeline
 
-SAMPLE = contextvars.ContextVar("benchmark_sample", default=None)
+SAMPLE = PROCESSING_UTTERANCE_ID
 
 
 def resident_bytes():
@@ -163,9 +162,9 @@ def instrument(path: Path, registry) -> None:
 
         class ScopedRecognizer:
             async def transcribe(_, wav, language):
-                # The current segment is removed from the queue before this call.
-                # Store its ID at enqueue through an ordered map of ephemeral PCM.
-                sample = self._benchmark_samples.pop(wav, None)
+                # wait_for inherits the explicit dequeue context, independent
+                # of audio contents, queue ordering, or concurrent speakers.
+                sample = SAMPLE.get()
                 mark = SAMPLE.set(sample)
                 try:
                     result = await recognizer.transcribe(wav, language)
@@ -189,7 +188,6 @@ def instrument(path: Path, registry) -> None:
                 finally:
                     SAMPLE.reset(mark)
 
-        self._benchmark_samples = {}
         self.recognizer = ScopedRecognizer()
         original_callback = self.on_transcript
 
@@ -202,15 +200,8 @@ def instrument(path: Path, registry) -> None:
 
         self.on_transcript = callback
 
-    def mapped_enqueue(self, segment):
-        # Bounded by the existing queue; no PCM or text is persisted.
-        if len(self._benchmark_samples) >= 8:
-            self._benchmark_samples.clear()
-        self._benchmark_samples[segment.wav()] = segment.utterance_id
-        return enqueue(self, segment)
-
     SpeakerPipeline.__init__ = initialize
-    SpeakerPipeline.enqueue = mapped_enqueue
+    SpeakerPipeline.enqueue = enqueue
     http.HttpSpeechRecognizer.transcribe = transcribe
     LocalSpeechRecognizer.transcribe = local_transcribe
     RoomAudioReceiver.discover = discover

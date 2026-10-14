@@ -5,6 +5,7 @@ No microphone buffers, transcripts, or tokens are persisted/logged.
 """
 
 import asyncio
+import contextvars
 import io
 import math
 import sys
@@ -19,6 +20,7 @@ from nastya_worker.providers.types import Language, SpeechRecognizer, Transcript
 
 SAMPLE_RATE = 16000
 HUMANS = frozenset({"human:owner", "human:guest"})
+PROCESSING_UTTERANCE_ID = contextvars.ContextVar("processing_utterance_id", default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +228,7 @@ class SpeakerPipeline:
     async def _process(self) -> None:
         while self.running:
             segment = await self.queue.get()
+            context_token = PROCESSING_UTTERANCE_ID.set(segment.utterance_id)
             try:
                 if time.monotonic() - segment.created_at > self.expiry_seconds:
                     self.dropped += 1
@@ -266,6 +269,7 @@ class SpeakerPipeline:
                 else:
                     self.dropped += 1
             finally:
+                PROCESSING_UTTERANCE_ID.reset(context_token)
                 self.queue.task_done()
 
     async def stop(self) -> None:

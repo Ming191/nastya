@@ -6,9 +6,76 @@ from types import SimpleNamespace
 import pytest
 
 from nastya_worker.analyse_captions import analyse, canonical_numbers, summary
-from nastya_worker.benchmark_room import FixtureRegistry
+from nastya_worker.benchmark_room import FixtureRegistry, instrument
 from nastya_worker.providers.types import Transcript
 from nastya_worker.speaker_pipeline import Segment, SpeakerPipeline
+
+
+def test_identical_audio_keeps_distinct_segment_ids(tmp_path, monkeypatch):
+    from nastya_worker import benchmark_room as bench
+    from nastya_worker.speaker_pipeline import PROCESSING_UTTERANCE_ID
+
+    # Instrumentation mutates class methods only in the isolated benchmark.
+    # Register originals with pytest so this test restores every method.
+    targets = [
+        (SpeakerPipeline, "__init__"),
+        (SpeakerPipeline, "enqueue"),
+        (bench.http.HttpSpeechRecognizer, "transcribe"),
+        (bench.http, "_post"),
+        (bench.LocalSpeechRecognizer, "transcribe"),
+        (bench.RoomAudioReceiver, "discover"),
+        (bench.TranslationPipeline, "process"),
+        (bench.TranslationPipeline, "_publish"),
+    ]
+    for target, name in targets:
+        monkeypatch.setattr(target, name, getattr(target, name))
+    registry = FixtureRegistry()
+    instrument(tmp_path / "worker-events.jsonl", registry)
+
+    async def go():
+        observed = []
+
+        class Recognizer:
+            async def transcribe(self, wav, language):
+                await asyncio.sleep(0)
+                observed.append(PROCESSING_UTTERANCE_ID.get())
+                return Transcript("synthetic", language)
+
+        async def callback(segment, transcript):
+            assert PROCESSING_UTTERANCE_ID.get() == segment.utterance_id
+
+        pipeline = SpeakerPipeline(
+            "human:owner", "vi", 1, Recognizer(), asyncio.Semaphore(1), callback
+        )
+        for serial in (1, 2):
+            registry.active["human:owner"] = f"vi-{serial}"
+            pipeline.enqueue(
+                Segment(
+                    "human:owner",
+                    "vi",
+                    f"human:owner:1:{serial}",
+                    0,
+                    100,
+                    b"\0" * 3200,
+                    1,
+                    time.monotonic(),
+                )
+            )
+        pipeline.start()
+        await asyncio.wait_for(pipeline.queue.join(), 1)
+        await pipeline.stop()
+        assert observed == ["human:owner:1:1", "human:owner:1:2"]
+        assert PROCESSING_UTTERANCE_ID.get() is None
+
+    asyncio.run(go())
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "synthetic-transcripts.jsonl").read_text().splitlines()
+    ]
+    assert [(r["sample"], r["fixtureId"]) for r in records] == [
+        ("human:owner:1:1", "vi-1"),
+        ("human:owner:1:2", "vi-2"),
+    ]
 
 
 def test_missing_metrics_stay_unavailable_and_zero_stays_measured():

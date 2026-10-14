@@ -78,14 +78,10 @@ async function prepare(page: Page) {
           if (states.get(entry) === state) continue;
           states.set(entry, state);
           if (!indexes.has(entry)) indexes.set(entry, serial++);
-          // Read the exact React list key already derived from the protocol ID.
-          // No content/timestamp matching, and no web deployment is required.
-          const fiberProperty = Object.keys(entry).find(k => k.startsWith("__reactFiber$"));
-          const fiber = fiberProperty ? (entry as unknown as Record<string, { key?: string }>)[fiberProperty] : null;
-          const key = fiber?.key ?? "";
-          const match = /^human:(owner|guest):(human:(?:owner|guest):\d+:\d+)$/.exec(key);
+          const id = entry.getAttribute("data-utterance-id");
+          const validId = id !== null && /^human:(owner|guest):\d+:\d+$/.test(id);
           events.push({ index: indexes.get(entry)!, final, text,
-            utteranceId: match?.[2] ?? null,
+            utteranceId: validId ? id : null,
             language: entry.querySelector("p")?.getAttribute("lang") ?? null,
             atUnixMs: performance.timeOrigin + performance.now() });
         }
@@ -110,7 +106,7 @@ async function main() {
   const fixtures: Fixture[] = JSON.parse(await readFile(corpusPath, "utf8"));
   const report = { source: "synthetic", profile, startedAt: new Date().toISOString(),
     correlationVersion: 2,
-    correlationMethod: "Explicit localhost begin/end fixture control at drained VAD boundaries; segment utteranceId from worker, exact protocol ID from React DOM list key; WER uses separate synthetic STT output, never lossy partial captions.",
+    correlationMethod: "Explicit localhost fixture boundaries; worker processing context carries segment utteranceId; DOM data-utterance-id carries the exact protocol ID; WER uses synthetic STT output, never partial captions.",
     clockMethod: "Same Windows host for source and receiver. AudioContext schedule is mapped to browser performance wall clock and checked against source onended; callback discrepancy plus 3ms is recorded per case. Latency is unavailable above a 50ms check threshold. Endpoint is DOM mutation, not optical paint detection. These are synthetic capture-to-DOM estimates, not human or cross-device acceptance.",
     samples: [] as unknown[], errors: [] as string[], gpuSamples: [] as unknown[], workerWarnings: [] as string[],
     gpuScope: "Whole GPU, includes other applications; not process VRAM" };

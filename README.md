@@ -304,11 +304,19 @@ latency. Resource measurements exclude model startup and sample GPU-wide usage,
 which includes other applications.
 Use a fresh output directory for every run. Fixture boundaries are explicitly
 registered with the isolated worker over localhost and must drain VAD before
-the next fixture. Segment IDs are joined with the exact caption list key in
-React; unmatched deliveries are unavailable, never matched by text similarity.
+the next fixture. Segment IDs travel in the worker processing context and are
+joined with the explicit `data-utterance-id` on the caption element. Unmatched
+deliveries are unavailable, never matched by text similarity or audio contents.
 STT scoring reads `synthetic-transcripts.jsonl`, a separate file containing only
 the original synthetic test output. Partial-caption loss does not affect WER.
 The analyser rejects older reports without this provenance (version 2).
+
+If native CUDA inference hangs indefinitely, its ownership stays locked and new
+local recognition requests fail as busy. Coroutine timeouts still return and
+the human call continues, but GPU recovery requires restarting the worker
+process. Hybrid mode can continue HTTP recognition when cloud request credit
+is available. There is currently no automatic watchdog for a permanently hung
+CUDA call.
 
 To run the opt-in deployed caption check from the repository root:
 

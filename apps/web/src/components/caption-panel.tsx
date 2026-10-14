@@ -117,6 +117,7 @@ export function CaptionPanel({
       <div className="caption-history" aria-label="Conversation captions" role="log" aria-live="off">
         {captions.slice(-16).map((caption) =>
           <article key={caption.speakerId + ":" + caption.utteranceId}
+            data-utterance-id={caption.utteranceId}
             className={"caption-entry " + (caption.isFinal ? "final" : "partial")}>
             <div className="caption-entry-heading">
               <strong>{speakerLabel(caption.speakerId)}</strong>
