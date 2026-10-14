@@ -21,6 +21,10 @@ class InferenceError(RuntimeError):
     """Safe failure message without tokens or private model responses."""
 
 
+class RequestBudgetBusy(InferenceError):
+    """No request credit is available immediately; no request was sent."""
+
+
 def _check_language(value: str) -> None:
     if value not in ("vi", "ru"):
         raise ValueError("language must be 'vi' or 'ru'")
@@ -65,16 +69,23 @@ class HttpSpeechRecognizer:
         api_key: str = "",
         model: str = "whisper-1",
         min_interval_seconds: float = 0,
+        burst_requests: int = 1,
     ) -> None:
         self._client = client
         self._endpoint = endpoint
         self._api_key = api_key
         self._model = model
         self._min_interval = min_interval_seconds
-        self._next_start = 0.0
+        if not 1 <= burst_requests <= 2 or not 0 <= min_interval_seconds <= 60:
+            raise ValueError("invalid STT request pacing")
+        self._capacity = burst_requests
+        self._tokens = float(burst_requests)
+        self._refilled_at = time.perf_counter()
         self._start_lock = asyncio.Lock()
 
-    async def transcribe(self, wav: bytes, language: Language) -> Transcript:
+    async def transcribe(
+        self, wav: bytes, language: Language, *, wait_for_slot: bool = True
+    ) -> Transcript:
         _check_language(language)
         if not wav or len(wav) > MAX_WAV_BYTES:
             raise ValueError("WAV audio must contain 1 to 8388608 bytes")
@@ -82,8 +93,23 @@ class HttpSpeechRecognizer:
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         # Both speakers share this recognizer and the provider's request quota.
         async with self._start_lock:
-            await asyncio.sleep(max(0, self._next_start - time.monotonic()))
-            self._next_start = time.monotonic() + self._min_interval
+            if self._min_interval:
+                now = time.perf_counter()
+                self._tokens = min(
+                    self._capacity, self._tokens + (now - self._refilled_at) / self._min_interval
+                )
+                self._refilled_at = now
+                if self._tokens < 1 and not wait_for_slot:
+                    raise RequestBudgetBusy("STT request credit unavailable")
+                while self._tokens < 1:
+                    await asyncio.sleep((1 - self._tokens) * self._min_interval)
+                    now = time.perf_counter()
+                    self._tokens = min(
+                        self._capacity,
+                        self._tokens + (now - self._refilled_at) / self._min_interval,
+                    )
+                    self._refilled_at = now
+                self._tokens -= 1
         payload = await _post(
             self._client,
             self._endpoint,
@@ -134,6 +160,10 @@ class HttpTranslator:
 class ChatCompletionTranslator(HttpTranslator):
     """Translate with an OpenAI-compatible chat endpoint, including Groq."""
 
+    def __init__(self, client, endpoint, api_key="", model="", reasoning_effort=""):
+        super().__init__(client, endpoint, api_key, model)
+        self._reasoning_effort = reasoning_effort
+
     async def translate(
         self, text: str, source_language: Language, target_language: Language
     ) -> Translation:
@@ -150,6 +180,7 @@ class ChatCompletionTranslator(HttpTranslator):
             self._endpoint,
             headers=headers,
             json={
+                **({"reasoning_effort": self._reasoning_effort} if self._reasoning_effort else {}),
                 "model": self._model,
                 "temperature": 0,
                 "max_completion_tokens": 2048,

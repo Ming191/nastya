@@ -13,6 +13,8 @@ dependencies = ["httpx>=0.28.1,<0.29"]
 dev = ["pytest==8.4.2", "ruff==0.13.3"]
 rtc = ["livekit==1.1.20", "livekit-api==1.2.1"]
 tts = ["edge-tts==7.2.8"]
+local-stt = ["faster-whisper==1.2.1", "av>=11,<17"]
+cuda-windows = ["nvidia-cublas-cu12==12.9.2.10", "nvidia-cudnn-cu12==9.27.0.42"]
 
 [project.scripts]
 nastya-worker = "nastya_worker.cli:main"

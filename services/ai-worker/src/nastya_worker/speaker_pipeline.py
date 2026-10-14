@@ -237,9 +237,17 @@ class SpeakerPipeline:
                         self.dropped += 1
                         continue
                     try:
-                        transcript = await self.recognizer.transcribe(
-                            segment.wav(), segment.language
+                        transcript = await asyncio.wait_for(
+                            self.recognizer.transcribe(segment.wav(), segment.language),
+                            timeout=max(
+                                0.001, self.expiry_seconds - (time.monotonic() - segment.created_at)
+                            ),
                         )
+                    except TimeoutError:
+                        # Includes time waiting for provider quota. Cancel before
+                        # stale audio consumes another request or blocks fresh speech.
+                        self.dropped += 1
+                        continue
                     except Exception:
                         self.failures += 1
                         if self.running and self.on_stt_error:

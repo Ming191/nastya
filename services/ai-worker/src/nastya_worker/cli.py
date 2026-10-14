@@ -9,8 +9,8 @@ from pathlib import Path
 import httpx
 
 from nastya_worker.config import Settings
-from nastya_worker.providers.gateway import make_translator
-from nastya_worker.providers.http import HttpSpeechRecognizer, InferenceError
+from nastya_worker.providers.gateway import make_recognizer, make_translator
+from nastya_worker.providers.http import InferenceError
 
 
 def health(settings: Settings | None = None) -> dict[str, str | bool]:
@@ -45,11 +45,9 @@ async def probe(args: argparse.Namespace, settings: Settings) -> None:
             result = await translator.translate(args.probe_translation, args.source, args.target)
             print(json.dumps({"translated_text": result.text}, ensure_ascii=False))
         else:
-            if not settings.stt_url:
+            if not settings.stt_url and settings.stt_provider != "local":
                 raise ValueError("configure NASTYA_STT_URL to probe transcription")
-            recognizer = HttpSpeechRecognizer(
-                client, settings.stt_url, settings.stt_api_key, settings.stt_model
-            )
+            recognizer = make_recognizer(client, settings)
             wav = Path(args.probe_stt).read_bytes()
             result = await recognizer.transcribe(wav, args.source)
             print(json.dumps({"text": result.text}, ensure_ascii=False))

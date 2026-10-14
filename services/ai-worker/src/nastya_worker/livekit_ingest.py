@@ -10,11 +10,10 @@ from typing import Any
 import httpx
 
 from nastya_worker.config import Settings
-from nastya_worker.providers.gateway import make_translator
-from nastya_worker.providers.http import HttpSpeechRecognizer
+from nastya_worker.providers.gateway import make_recognizer, make_translator
 from nastya_worker.providers.tts import OptionalTts
-from nastya_worker.providers.types import Translator
-from nastya_worker.speaker_pipeline import HUMANS, SpeakerPipeline, source_language
+from nastya_worker.providers.types import SpeechRecognizer, Translator
+from nastya_worker.speaker_pipeline import HUMANS, SpeakerPipeline, VadOptions, source_language
 from nastya_worker.translation_pipeline import TranslationPipeline
 from nastya_worker.tts_config import TtsSettings
 
@@ -66,15 +65,20 @@ class RoomAudioReceiver:
         self,
         room: Any,
         rtc: Any,
-        recognizer: HttpSpeechRecognizer,
+        recognizer: SpeechRecognizer,
         translator: Translator | None = None,
         tts: OptionalTts | None = None,
         mt_timeout_seconds: float = 8.0,
+        stt_concurrency: int = 1,
+        vad: VadOptions | None = None,
     ):
         self.room = room
         self.rtc = rtc
         self.recognizer = recognizer
-        self.inference = asyncio.Semaphore(1)
+        if stt_concurrency not in (1, 2):
+            raise ValueError("STT concurrency must be one or two")
+        self.inference = asyncio.Semaphore(stt_concurrency)
+        self.vad = vad
         self.stop_event = asyncio.Event()
         self.readers: dict[str, tuple[str, asyncio.Task]] = {}
         self.epochs: dict[str, int] = dict.fromkeys(HUMANS, 0)
@@ -195,6 +199,7 @@ class RoomAudioReceiver:
             self.inference,
             self._on_transcript,
             on_stt_error=self._on_stt_error,
+            vad=self.vad,
         )
         pipeline.start()
         try:
@@ -208,13 +213,14 @@ class RoomAudioReceiver:
                 if frame.sample_rate != 16000 or frame.num_channels != 1:
                     # Explicit frame format contract; no unsafe interpretation.
                     self.failures += 1
+                    LOGGER.warning("audio frame format unavailable")
                     break
                 pipeline.feed(bytes(frame.data))
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             self.failures += 1
-            LOGGER.warning("audio stream failed speaker=%s", identity)
+            LOGGER.warning("audio stream failed speaker=%s error_type=%s", identity, type(exc).__name__)
         finally:
             await pipeline.stop()
             if stream is not None:
@@ -244,19 +250,20 @@ async def serve_room(room_id: str, settings: Settings) -> None:
     backoff_seconds = 1
     tts_config = TtsSettings.from_env()
     async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
-        recognizer = HttpSpeechRecognizer(
-            client,
-            settings.stt_url,
-            settings.stt_api_key,
-            settings.stt_model,
-            settings.stt_min_interval_seconds,
-        )
+        recognizer = make_recognizer(client, settings)
         translator = make_translator(client, settings)
         while True:
             room = rtc.Room()
             tts = tts_config.build() if tts_config.enabled else None
             receiver = RoomAudioReceiver(
-                room, rtc, recognizer, translator, tts, settings.mt_timeout_seconds
+                room,
+                rtc,
+                recognizer,
+                translator,
+                tts,
+                settings.mt_timeout_seconds,
+                settings.stt_concurrency,
+                VadOptions(silence_ms=settings.vad_silence_ms),
             )
             receiver.register()
             try:

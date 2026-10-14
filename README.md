@@ -253,6 +253,56 @@ Keep this computer running and connected during calls. Groq quotas apply;
 the shared STT pacing introduces queue delay under simultaneous speech.
 Keep API keys on this worker, outside the browser and source control.
 
+For a bounded cloud profile, set `NASTYA_STT_BURST_REQUESTS=2`,
+`NASTYA_STT_CONCURRENCY=2`, `NASTYA_VAD_SILENCE_MS=250` and
+`NASTYA_MT_TIMEOUT_SECONDS=2`. For Groq Qwen translation, explicitly set
+`NASTYA_MT_REASONING_EFFORT=none`. The burst capacity of two with a 3.2-second
+refill allows at most 20 STT calls per minute for this worker; other processes
+still share the provider account's quota.
+
+### Optional CUDA recognition on Windows
+
+In `services/ai-worker`, run `uv sync --extra rtc --extra local-stt --extra cuda-windows`.
+An NVIDIA GPU/compatible driver is required. CUDA DLLs are loaded from this
+virtual environment; the launcher does not install or change system drivers.
+In `.env.local`, set `NASTYA_STT_PROVIDER=local`, `NASTYA_STT_LOCAL_MODEL=turbo`,
+`NASTYA_STT_LOCAL_COMPUTE_TYPE=int8_float16`, `NASTYA_STT_CONCURRENCY=1`,
+`NASTYA_VAD_SILENCE_MS=250`, and keep the MT/LiveKit settings. Local STT
+does not call the external STT endpoint or use its quota. On first start, the
+model downloads into the ignored `models/` directory and CUDA is warmed before
+microphones are subscribed. Keep this computer available during calls.
+For HTTP recognition again, set `NASTYA_STT_PROVIDER=http` and restart the worker.
+Set `NASTYA_STT_PROVIDER=hybrid` to use HTTP recognition when request credit is
+immediately available, and the warmed local GPU when credit is busy, the HTTP
+call exceeds 1.2 seconds or inference fails. Keep the HTTP URL/key configured,
+the 3.2-second refill, burst size two and concurrency two. If local model
+initialization fails, hybrid mode uses HTTP only. For local-only mode, the
+concurrency remains one. Both modes keep original RTC working if AI fails.
+
+### Opt-in synthetic latency benchmark
+
+From the repository root, with the worker dependencies installed:
+
+```powershell
+$env:NASTYA_CAPTION_SMOKE_WORKER_ENV = (Resolve-Path services/ai-worker/.env.local).Path
+npx tsx scripts/benchmark-captions.ts https://your-app.example corpus.json C:/temp/caption-metrics realtime
+services/ai-worker/.venv/Scripts/python.exe -m nastya_worker.analyse_captions C:/temp/caption-metrics --expected 20
+```
+
+Profiles: `baseline`, `optimized`, `realtime`, `aggressive`, `pressure`,
+`local`, `local-int8`, `local-int8-pressure`, `hybrid`, and `hybrid-pressure`.
+A corpus is a JSON array of
+original synthetic fixtures with `id`, `language` (`vi`/`ru`), `source`,
+`reference`, `audioPath` (MP3), and `condition` (`clean`, `noise`, `simultaneous`).
+Pair IDs `vi-0`/`ru-0` through `vi-9`/`ru-9` are used by the pressure profile,
+which selects the first six pairs. Normal profiles play each fixture separately,
+except `simultaneous` fixtures. Benchmark reports contain the synthetic source
+and predicted text for scoring; never supply private recordings. Worker stage
+events contain metadata only. The benchmark records same-host AudioContext-to-DOM
+latency estimates and clock checks, not human cross-device or optical display
+latency. Resource measurements exclude model startup and sample GPU-wide usage,
+which includes other applications.
+
 To run the opt-in deployed caption check from the repository root:
 
 ```powershell
