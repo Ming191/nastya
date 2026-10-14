@@ -83,6 +83,32 @@ export function getMediaError(error: unknown, device: "microphone" | "camera"): 
   return "Unable to use the " + device + ". Check the device and try again.";
 }
 
+type MediaPermissionQuery = (device: "microphone" | "camera") => Promise<PermissionState | null>;
+
+async function browserMediaPermission(device: "microphone" | "camera"): Promise<PermissionState | null> {
+  if (typeof navigator === "undefined" || !navigator.permissions?.query) return null;
+  // Camera/microphone queries are unavailable in some browsers. The caller
+  // falls back to the capture error without treating unsupported queries as denial.
+  return (await navigator.permissions.query({ name: device as PermissionName })).state;
+}
+
+export async function getMediaErrorWithPermission(
+  error: unknown,
+  device: "microphone" | "camera",
+  queryPermission: MediaPermissionQuery = browserMediaPermission,
+): Promise<string> {
+  try {
+    if (await queryPermission(device) === "denied") {
+      // SDK/capture failures can lose the native DOMException name. Use the
+      // browser's actual permission state rather than matching exception text.
+      return getMediaError({ name: "NotAllowedError" }, device);
+    }
+  } catch {
+    // Unsupported Permissions API queries must not break an otherwise usable call.
+  }
+  return getMediaError(error, device);
+}
+
 export function languageLabel(language: SpokenLanguage): string {
   return language === "ru" ? "Russian" : "Vietnamese";
 }

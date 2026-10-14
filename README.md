@@ -27,6 +27,34 @@ npm run check:web
 npm run build:web
 ```
 
+## Vercel deployment
+
+Import this repository into a Vercel project with **Root Directory** `apps/web`,
+framework **Next.js**, and Node.js **22.x**. Include source files outside the root
+directory so npm can use the repository workspace lockfile. The app's
+`vercel.json` configures the build and a single Singapore function region.
+
+Before deploying, set these environment variables in Vercel's **Production**
+environment (use Secret/sensitive values for credentials):
+
+- `NASTYA_PUBLIC_ORIGIN`: the exact HTTPS production URL, without a path.
+- `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`: your LiveKit project.
+- `NASTYA_INVITE_SECRET`: a dedicated random signing key of at least 32 bytes.
+- `NASTYA_REDIS_REST_URL`, `NASTYA_REDIS_REST_TOKEN`: your Redis REST instance.
+- `NASTYA_LIVEKIT_CONNECT_ORIGINS`: exact regional LiveKit HTTPS/WSS origins,
+  when required by your deployment's routing.
+
+Use independent credentials for Preview if enabling preview room access. Missing
+credentials leave room creation/join unavailable. Changes to connection origins
+require a new build. Confirm `/api/health` responds, create a room and test a
+two-browser call after deployment. Configure trusted-edge request protection
+before sharing the app publicly.
+
+Run the Python interpreter on your own computer using the worker instructions
+below; it is not hosted in a Vercel function. It needs outbound access to LiveKit
+and configured STT/translation providers. Avoid sharing room invites or secrets
+in logs. Review each provider's recording and retention settings.
+
 ## Python worker
 
 ```bash
@@ -112,7 +140,7 @@ Alternatively, create/redeem rooms using JSON over HTTPS:
 curl -X POST http://localhost:3000/api/rooms
 curl -X POST http://localhost:3000/api/rooms/join \
   -H 'Content-Type: application/json' \
-  -d '{"version":1,"roomId":"...","invite":"...","preferredLanguage":"vi"}'
+  -d '{"version":1,"roomId":"...","invite":"...","preferredLanguage":"vi","sessionNonce":"your-lowercase-uuid-v4"}'
 ```
 
 Keep owner invitations private. Guest links are bearer credentials: anyone with a valid link can request the guest role while it is unoccupied. Per-process throttling is only a basic abuse backstop; use trusted edge rate limits for public deployment.
@@ -201,6 +229,112 @@ Optionally configure `NASTYA_VAD_URL` (and `NASTYA_VAD_API_KEY`) to evaluate a V
 
 ## One-room LiveKit interpreter (microphone ingestion)
 
+### Groq API on a local Windows worker
+
+In `services/ai-worker`, install with `uv sync --extra rtc` and create the
+ignored `.env.local` file using `.env.example`. Set:
+
+```dotenv
+NASTYA_STT_URL=https://api.groq.com/openai/v1/audio/transcriptions
+NASTYA_STT_MODEL=whisper-large-v3-turbo
+NASTYA_MT_URL=https://api.groq.com/openai/v1/chat/completions
+NASTYA_MT_PROVIDER=chat
+NASTYA_MT_MODEL=qwen/qwen3.8-27b
+NASTYA_STT_MIN_INTERVAL_SECONDS=3.2
+```
+
+Set both `NASTYA_STT_API_KEY` and `NASTYA_MT_API_KEY` to the Groq key, plus
+the three LiveKit variables. Run `./start-worker.ps1` to discover active Nastya
+rooms automatically, or `./start-worker.ps1 -RoomId nastya_<32 hex characters>`
+to serve a specific room. `./start-worker.ps1 -Health` checks configuration only.
+The watcher serves one call at a time, polls every five seconds and releases
+the room when no owner or guest remains. Run only one watcher for this project.
+Keep this computer running and connected during calls. Groq quotas apply;
+the shared STT pacing introduces queue delay under simultaneous speech.
+Keep API keys on this worker, outside the browser and source control.
+
+For a bounded cloud profile, set `NASTYA_STT_BURST_REQUESTS=2`,
+`NASTYA_STT_CONCURRENCY=2`, `NASTYA_VAD_SILENCE_MS=250` and
+`NASTYA_MT_TIMEOUT_SECONDS=2`. For Groq Qwen translation, explicitly set
+`NASTYA_MT_REASONING_EFFORT=none`. The burst capacity of two with a 3.2-second
+refill allows at most 20 STT calls per minute for this worker; other processes
+still share the provider account's quota.
+
+### Optional CUDA recognition on Windows
+
+In `services/ai-worker`, run `uv sync --extra rtc --extra local-stt --extra cuda-windows`.
+An NVIDIA GPU/compatible driver is required. CUDA DLLs are loaded from this
+virtual environment; the launcher does not install or change system drivers.
+In `.env.local`, set `NASTYA_STT_PROVIDER=local`, `NASTYA_STT_LOCAL_MODEL=turbo`,
+`NASTYA_STT_LOCAL_COMPUTE_TYPE=int8_float16`, `NASTYA_STT_CONCURRENCY=1`,
+`NASTYA_VAD_SILENCE_MS=250`, and keep the MT/LiveKit settings. Local STT
+does not call the external STT endpoint or use its quota. On first start, the
+model downloads into the ignored `models/` directory and CUDA is warmed before
+microphones are subscribed. Keep this computer available during calls.
+For HTTP recognition again, set `NASTYA_STT_PROVIDER=http` and restart the worker.
+Set `NASTYA_STT_PROVIDER=hybrid` to use HTTP recognition when request credit is
+immediately available, and the warmed local GPU when credit is busy, the HTTP
+call exceeds 1.2 seconds or inference fails. Keep the HTTP URL/key configured,
+the 3.2-second refill, burst size two and concurrency two. If local model
+initialization fails, hybrid mode uses HTTP only. For local-only mode, the
+concurrency remains one. Both modes keep original RTC working if AI fails.
+
+### Opt-in synthetic latency benchmark
+
+From the repository root, with the worker dependencies installed:
+
+```powershell
+$env:NASTYA_CAPTION_SMOKE_WORKER_ENV = (Resolve-Path services/ai-worker/.env.local).Path
+npx tsx scripts/benchmark-captions.ts https://your-app.example corpus.json C:/temp/caption-metrics realtime
+services/ai-worker/.venv/Scripts/python.exe -m nastya_worker.analyse_captions C:/temp/caption-metrics --expected 20
+```
+
+Profiles: `baseline`, `optimized`, `realtime`, `aggressive`, `pressure`,
+`local`, `local-int8`, `local-int8-pressure`, `hybrid`, and `hybrid-pressure`.
+A corpus is a JSON array of
+original synthetic fixtures with `id`, `language` (`vi`/`ru`), `source`,
+`reference`, `audioPath` (MP3), and `condition` (`clean`, `noise`, `simultaneous`).
+Pair IDs `vi-0`/`ru-0` through `vi-9`/`ru-9` are used by the pressure profile,
+which selects the first six pairs. Normal profiles play each fixture separately,
+except `simultaneous` fixtures. Benchmark reports contain the synthetic source
+and predicted text for scoring; never supply private recordings. Worker stage
+events contain metadata only. The benchmark records same-host AudioContext-to-DOM
+latency estimates and clock checks, not human cross-device or optical display
+latency. Resource measurements exclude model startup and sample GPU-wide usage,
+which includes other applications.
+Use a fresh output directory for every run. Fixture boundaries are explicitly
+registered with the isolated worker over localhost and must drain VAD before
+the next fixture. Segment IDs travel in the worker processing context and are
+joined with the explicit `data-utterance-id` on the caption element. Unmatched
+deliveries are unavailable, never matched by text similarity or audio contents.
+STT scoring reads `synthetic-transcripts.jsonl`, a separate file containing only
+the original synthetic test output. Partial-caption loss does not affect WER.
+The analyser rejects older reports without this provenance (version 2).
+
+If native CUDA inference hangs indefinitely, its ownership stays locked and new
+local recognition requests fail as busy. Coroutine timeouts still return and
+the human call continues, but GPU recovery requires restarting the worker
+process. Hybrid mode can continue HTTP recognition when cloud request credit
+is available. There is currently no automatic watchdog for a permanently hung
+CUDA call.
+
+To run the opt-in deployed caption check from the repository root:
+
+```powershell
+$env:NASTYA_CAPTION_SMOKE_WORKER_ENV = (Resolve-Path services/ai-worker/.env.local).Path
+$env:NASTYA_CAPTION_SMOKE_MODE = 'translated' # or mt-failure / mt-timeout
+npx tsx scripts/validate-captions.ts https://your-app.example vi.wav ru.wav C:/temp/caption-check
+```
+
+Supply original synthetic WAV fixtures: Vietnamese "Xin chào. Ngày mai chúng ta
+gặp nhau lúc chín giờ." and Russian "Привет. Завтра мы встретимся в девять часов."
+Use mono 48 kHz PCM16, 25 seconds of leading silence and 50 seconds of trailing
+silence so the interpreter can attach before speech. The script uses fake
+microphones, creates a separate test room and starts/stops its own worker.
+Failure modes replace only that worker's translation endpoint with a local
+HTTP failure or timeout. Reports contain timings and result flags, without
+captions, invitations or keys. Never supply private call recordings as fixtures.
+
 The worker runs on a separate computer from the web UI and makes **outbound** connections to LiveKit and a configured speech API. It does not need a GPU on this computer. In the Python worker directory:
 
 ```bash
@@ -287,11 +421,11 @@ Current production calls do not export such traces automatically.
 
 ## Room security settings
 
-For any public deployment, configure the server-only `NASTYA_REDIS_REST_URL`
+For production (including loopback origins) or any public deployment, configure the server-only `NASTYA_REDIS_REST_URL`
 and `NASTYA_REDIS_REST_TOKEN` credentials (from a private Redis REST
 deployment with atomic Lua EVAL), in addition to the LiveKit and invite-signing
 variables. The app **rejects all room creation and join requests** if the shared
-security store is missing or unavailable. Local HTTP loopback testing uses a
+security store is missing or unavailable. Non-production local HTTP loopback testing uses a
 process-local security store and must **never** be exposed to the public internet.
 
 Creation is limited globally to 60 requests/minute and joins to 300/minute in
@@ -307,6 +441,16 @@ track sources from human participants, not arbitrary AI data packets.
 
 Browser and API responses have no-referrer, nosniff, anti-framing and CSP
 policies. The user must affirm the media/AI processing notice before joining.
+
+Set `LIVEKIT_URL` before building the web app: browser CSP allows that exact
+WebSocket origin and its HTTP/HTTPS equivalent. If the LiveKit deployment routes
+clients to additional regional hosts, add their exact HTTPS/WSS origins to the
+comma-separated `NASTYA_LIVEKIT_CONNECT_ORIGINS` build environment variable.
+Rebuild after changing these settings. Wildcards and arbitrary HTTPS/WSS hosts
+are rejected. Redis REST redirects are rejected; use its direct HTTPS endpoint.
+CLI callers must generate a lowercase UUIDv4 `sessionNonce` and retain the same
+value to rejoin the same room/role.
+
 Neither the app nor the model worker persist call audio or transcripts by
 default; configured inference providers and LiveKit may have separate data
 retention rules. Review those providers and obtain user consent before use.

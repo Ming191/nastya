@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaptionPanel } from "./caption-panel";
 import { TranslatedVoice } from "./translated-voice";
-import { getMediaError, isHumanIdentity, languageLabel, type ParticipantRole, type SpokenLanguage } from "../lib/call";
+import { getMediaErrorWithPermission, isHumanIdentity, languageLabel, type ParticipantRole, type SpokenLanguage } from "../lib/call";
 import { disconnectRoomOnce, nextConnection, nextPeerPresence, type CallConnection, type PeerPresence } from "../lib/call-lifecycle";
 
 type DeviceKind = "audioinput" | "videoinput" | "audiooutput";
@@ -77,6 +77,7 @@ export function LiveCall({
   canShare: boolean;
 }) {
   const [revision, setRevision] = useState(0);
+  const mediaRun = useRef(0);
   const [connection, setConnection] = useState<CallConnection>("connected");
   const [peerPresence, setPeerPresence] = useState<PeerPresence>(() =>
     Array.from(room.remoteParticipants.values()).some((p) => isHumanIdentity(p.identity))
@@ -102,6 +103,7 @@ export function LiveCall({
 
   useEffect(() => {
     let active = true;
+    const run = ++mediaRun.current;
     const refresh = () => {
       if (active) setRevision((value) => value + 1);
     };
@@ -157,22 +159,26 @@ export function LiveCall({
         }),
         room.localParticipant.setCameraEnabled(true),
       ]);
+      const messages = await Promise.all(results.map((result, index) =>
+        result.status === "rejected"
+          ? getMediaErrorWithPermission(result.reason, index === 0 ? "microphone" : "camera")
+          : undefined,
+      ));
       if (!active) {
         // Permission prompts may settle after leave/unmount; close any late tracks.
-        await disconnectRoomOnce(room);
+        // React development Strict Mode replays this effect on the same room.
+        // The newer run owns its media; an older run must not disconnect it.
+        if (mediaRun.current === run) await disconnectRoomOnce(room);
         return;
       }
       setMediaErrors({
-        microphone: results[0].status === "rejected"
-          ? getMediaError(results[0].reason, "microphone") : undefined,
-        camera: results[1].status === "rejected"
-          ? getMediaError(results[1].reason, "camera") : undefined,
+        microphone: messages[0],
+        camera: messages[1],
       });
       await refreshDevices();
       refresh();
     };
     void startLocalMedia();
-    void refreshDevices();
 
     return () => {
       active = false;
@@ -222,7 +228,8 @@ export function LiveCall({
       setMediaErrors((current) => ({ ...current, [device]: undefined }));
       await refreshDevices();
     } catch (error) {
-      setMediaErrors((current) => ({ ...current, [device]: getMediaError(error, device) }));
+      const message = await getMediaErrorWithPermission(error, device);
+      setMediaErrors((current) => ({ ...current, [device]: message }));
     } finally {
       setAction(null);
       setRevision((value) => value + 1);

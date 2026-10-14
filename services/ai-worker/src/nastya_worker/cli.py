@@ -9,7 +9,8 @@ from pathlib import Path
 import httpx
 
 from nastya_worker.config import Settings
-from nastya_worker.providers.http import HttpSpeechRecognizer, HttpTranslator, InferenceError
+from nastya_worker.providers.gateway import make_recognizer, make_translator
+from nastya_worker.providers.http import InferenceError
 
 
 def health(settings: Settings | None = None) -> dict[str, str | bool]:
@@ -40,17 +41,13 @@ async def probe(args: argparse.Namespace, settings: Settings) -> None:
         if args.probe_translation is not None:
             if not settings.mt_url:
                 raise ValueError("configure NASTYA_MT_URL to probe translation")
-            translator = HttpTranslator(
-                client, settings.mt_url, settings.mt_api_key, settings.mt_model
-            )
+            translator = make_translator(client, settings)
             result = await translator.translate(args.probe_translation, args.source, args.target)
             print(json.dumps({"translated_text": result.text}, ensure_ascii=False))
         else:
-            if not settings.stt_url:
+            if not settings.stt_url and settings.stt_provider != "local":
                 raise ValueError("configure NASTYA_STT_URL to probe transcription")
-            recognizer = HttpSpeechRecognizer(
-                client, settings.stt_url, settings.stt_api_key, settings.stt_model
-            )
+            recognizer = make_recognizer(client, settings)
             wav = Path(args.probe_stt).read_bytes()
             result = await recognizer.transcribe(wav, args.source)
             print(json.dumps({"text": result.text}, ensure_ascii=False))
@@ -61,6 +58,7 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--health", action="store_true", help="print process status as JSON")
     group.add_argument("--room", metavar="ROOM_ID", help="subscribe one LiveKit room to remote STT")
+    group.add_argument("--watch-rooms", action="store_true", help="serve one active Nastya room")
     group.add_argument("--probe-translation", metavar="TEXT", help="translate sample text via API")
     group.add_argument("--probe-stt", metavar="WAV", help="transcribe WAV via API")
     parser.add_argument("--source", choices=("vi", "ru"), default="vi")
@@ -75,6 +73,10 @@ def main() -> None:
             from nastya_worker.livekit_ingest import serve_room
 
             asyncio.run(serve_room(args.room, settings))
+        elif args.watch_rooms:
+            from nastya_worker.room_watcher import watch_rooms
+
+            asyncio.run(watch_rooms(settings))
         elif args.probe_translation is not None or args.probe_stt is not None:
             asyncio.run(probe(args, settings))
         else:

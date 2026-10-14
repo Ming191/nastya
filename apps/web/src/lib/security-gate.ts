@@ -83,6 +83,7 @@ export function redisPost(
         body: JSON.stringify(command),
         signal: AbortSignal.timeout(2500),
         cache: "no-store",
+        redirect: "error",
       });
       if (!response.ok) throw new Error("redis unavailable");
       const body: unknown = await response.json();
@@ -139,7 +140,7 @@ export function securityGate(
 ): SecurityGate {
   const host = new URL(config.publicOrigin).hostname;
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(host);
-  if (local && new URL(config.publicOrigin).protocol === "http:") {
+  if (env.NODE_ENV !== "production" && local && new URL(config.publicOrigin).protocol === "http:") {
     const key = config.publicOrigin;
     let gate = devGates.get(key);
     if (!gate) {
