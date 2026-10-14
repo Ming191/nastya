@@ -302,6 +302,13 @@ events contain metadata only. The benchmark records same-host AudioContext-to-DO
 latency estimates and clock checks, not human cross-device or optical display
 latency. Resource measurements exclude model startup and sample GPU-wide usage,
 which includes other applications.
+Use a fresh output directory for every run. Fixture boundaries are explicitly
+registered with the isolated worker over localhost and must drain VAD before
+the next fixture. Segment IDs are joined with the exact caption list key in
+React; unmatched deliveries are unavailable, never matched by text similarity.
+STT scoring reads `synthetic-transcripts.jsonl`, a separate file containing only
+the original synthetic test output. Partial-caption loss does not affect WER.
+The analyser rejects older reports without this provenance (version 2).
 
 To run the opt-in deployed caption check from the repository root:
 

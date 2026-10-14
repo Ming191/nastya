@@ -1,4 +1,6 @@
 import asyncio
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -32,6 +34,44 @@ def test_local_recognizer_is_stateless_and_uses_fixed_language():
             assert calls[0]["beam_size"] == 1
             with pytest.raises(ValueError):
                 await stt.transcribe(b"RIFF", "en")
+
+    asyncio.run(go())
+
+
+def test_cancelled_native_inference_returns_promptly_without_gpu_overlap():
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    class Model:
+        def transcribe(self, audio, **kwargs):
+            calls.append(kwargs["language"])
+            entered.set()
+            release.wait(2)
+            return [SimpleNamespace(text="late synthetic result")], None
+
+    async def go():
+        with patch("nastya_worker.providers.local.load_model", return_value=Model()):
+            stt = LocalSpeechRecognizer()
+            task = asyncio.create_task(stt.transcribe(b"RIFF", "vi"))
+            try:
+                while not entered.is_set():
+                    await asyncio.sleep(0.001)
+                started = time.perf_counter()
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(task, 0.1)
+                assert time.perf_counter() - started < 0.1
+                with pytest.raises(InferenceError, match="busy"):
+                    await stt.transcribe(b"RIFF", "ru")
+                assert calls == ["vi"]
+            finally:
+                release.set()
+                if stt._inflight is not None:
+                    await stt._inflight
+            result = await stt.transcribe(b"RIFF", "ru")
+            assert result.language == "ru"
+            assert calls == ["vi", "ru"]
 
     asyncio.run(go())
 

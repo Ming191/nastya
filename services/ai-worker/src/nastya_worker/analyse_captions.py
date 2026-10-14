@@ -47,32 +47,48 @@ def analyse(directory: Path, expected: int):
         raise ValueError("benchmark row count is incomplete or contains duplicates")
     if report["errors"]:
         raise ValueError("benchmark has execution errors")
+    if report.get("correlationVersion") != 2:
+        raise ValueError("benchmark requires explicit fixture/utterance provenance v2")
     events = [
         json.loads(line) for line in (directory / "worker-events.jsonl").read_text().splitlines()
     ]
     grouped = defaultdict(dict)
     for event in events:
         grouped[event["sample"]][event["stage"]] = event
+    transcript_path = directory / "synthetic-transcripts.jsonl"
+    transcripts = defaultdict(list)
+    if transcript_path.exists():
+        for line in transcript_path.read_text(encoding="utf8").splitlines():
+            record = json.loads(line)
+            transcripts[record["sample"]].append(record)
     stages = defaultdict(list)
+    directional_stages = defaultdict(lambda: defaultdict(list))
     # API stage summaries cover every observed call, including cancelled calls.
     for event in events:
         if event["stage"] in {"stt_http", "stt_local", "mt_http"}:
             stages[event["stage"]].append(event["durationMs"])
+            direction = "vi-ru" if event["sample"].startswith("human:owner:") else "ru-vi"
+            directional_stages[direction][event["stage"]].append(event["durationMs"])
     for data in grouped.values():
+        if "enqueued" not in data:
+            continue
+        direction = "vi-ru" if data["enqueued"].get("direction") == "vi" else "ru-vi"
         if "stt_with_pacing" in data:
             stt = data["stt_with_pacing"]
             queue = stt["unixMs"] - stt["durationMs"] - data["enqueued"]["unixMs"]
             if queue >= 0:
                 stages["queue_wait"].append(queue)
+                directional_stages[direction]["queue_wait"].append(queue)
             if "stt_http" in data:
-                stages["pacing_and_adapter"].append(
-                    max(0, stt["durationMs"] - data["stt_http"]["durationMs"])
-                )
+                pacing = max(0, stt["durationMs"] - data["stt_http"]["durationMs"])
+                stages["pacing_and_adapter"].append(pacing)
+                directional_stages[direction]["pacing_and_adapter"].append(pacing)
         elif "stt_local" in data:
             stt = data["stt_local"]
             queue = stt["unixMs"] - stt["durationMs"] - data["enqueued"]["unixMs"]
             if queue >= 0:
                 stages["queue_wait"].append(queue)
+                directional_stages[direction]["queue_wait"].append(queue)
     outcomes = []
     for sample in samples:
         language = "ru" if sample["direction"] == "vi-ru" else "vi"
@@ -81,28 +97,48 @@ def analyse(directory: Path, expected: int):
         # using the rendered language, never its previously stored boolean.
         sample["success"] = success
         outcomes.append(success)
-        role = "human:owner:" if language == "ru" else "human:guest:"
+        segment_ids = sample.get("segmentIds", [])
         eligible = [
             data
             for uid, data in grouped.items()
-            if uid.startswith(role)
-            and sample["startUnixMs"]
-            <= data["enqueued"]["unixMs"]
-            <= sample["speechEndUnixMs"] + 1500
+            if uid in segment_ids and data.get("enqueued", {}).get("fixtureId") == sample["id"]
         ]
+        valid = sample.get("provenanceValid") and len(eligible) == len(segment_ids) > 0
+        source_language = "vi" if sample["direction"] == "vi-ru" else "ru"
+        records = [transcripts[uid] for uid in segment_ids]
+        valid = valid and all(
+            len(group) == 1
+            and group[0]["fixtureId"] == sample["id"]
+            and group[0]["language"] == source_language
+            for group in records
+        )
+        sample["provenanceValid"] = bool(valid)
+        sample["recognizedText"] = (
+            " ".join(group[0]["text"] for group in records) if valid else None
+        )
+        if not valid:
+            sample["speechEndToFinalMs"] = None
+            sample["success"] = False
+            outcomes[-1] = False
         if eligible:
             data = max(eligible, key=lambda d: d["enqueued"]["unixMs"])
             vad = data["enqueued"]["unixMs"] - sample["speechEndUnixMs"]
             if vad >= 0:
                 stages["capture_ingress_vad"].append(vad)
+                directional_stages[sample["direction"]]["capture_ingress_vad"].append(vad)
             if data.get("final_publish") and sample["finalUnixMs"] is not None:
                 final = data["final_publish"]
                 transport = sample["finalUnixMs"] - (final["unixMs"] - final["durationMs"])
                 if transport >= 0:
                     stages["publish_to_dom"].append(transport)
+                    directional_stages[sample["direction"]]["publish_to_dom"].append(transport)
     result = {
         "profile": report["profile"],
         "samples": len(samples),
+        "correlation_version": 2,
+        "correlation_method": report.get("correlationMethod"),
+        "fixtures_without_stt_provenance": sum(not s.get("provenanceValid") for s in samples),
+        "fixtures_without_final": sum(s["finalUnixMs"] is None for s in samples),
         "translated": sum(outcomes),
         "not_translated": len(samples) - sum(outcomes),
         "translated_rate": ratio(sum(outcomes), len(samples)),
@@ -126,21 +162,33 @@ def analyse(directory: Path, expected: int):
         "segments_without_final": sum("final_publish" not in data for data in grouped.values()),
         "human_quality_score": None,
         "remote_gpu_vram_bytes": None,
+        "tts_latency_ms": None,
+        "voice_transport_latency_ms": None,
+        "end_to_end_scope": (
+            "synthetic same-host speech end to final DOM mutation; not cross-device human latency"
+        ),
         "directions": {},
     }
     for direction in ("vi-ru", "ru-vi"):
         selected = [s for s in samples if s["direction"] == direction]
-        counts = [error_counts(s["sourceReference"], s["recognizedText"]) for s in selected]
+        scored = [
+            s for s in selected if s.get("provenanceValid") and isinstance(s["recognizedText"], str)
+        ]
+        counts = [error_counts(s["sourceReference"], s["recognizedText"]) for s in scored]
         canonical = [
             error_counts(
                 canonical_numbers(s["sourceReference"]), canonical_numbers(s["recognizedText"])
             )
-            for s in selected
+            for s in scored
         ]
         result["directions"][direction] = {
             "samples": len(selected),
+            "stt_scored_samples": len(scored),
             "translated": sum(s["success"] for s in selected),
             "latency_ms": summary([s["speechEndToFinalMs"] for s in selected]),
+            "stages_ms": {
+                stage: summary(values) for stage, values in directional_stages[direction].items()
+            },
             "wer": ratio(
                 sum(c["word_errors"] for c in counts), sum(c["reference_words"] for c in counts)
             ),

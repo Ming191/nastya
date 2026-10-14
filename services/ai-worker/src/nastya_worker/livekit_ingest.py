@@ -220,7 +220,9 @@ class RoomAudioReceiver:
             raise
         except Exception as exc:
             self.failures += 1
-            LOGGER.warning("audio stream failed speaker=%s error_type=%s", identity, type(exc).__name__)
+            LOGGER.warning(
+                "audio stream failed speaker=%s error_type=%s", identity, type(exc).__name__
+            )
         finally:
             await pipeline.stop()
             if stream is not None:

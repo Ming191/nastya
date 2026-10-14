@@ -1,4 +1,4 @@
-"""Opt-in synthetic-room instrumentation; never writes audio, text or credentials."""
+"""Opt-in synthetic-room metrics; synthetic STT text goes to a separate scoring file."""
 
 import argparse
 import asyncio
@@ -50,7 +50,7 @@ def resident_bytes():
     return counters.working_set
 
 
-def instrument(path: Path) -> None:
+def instrument(path: Path, registry) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     def emit(stage, start, **values):
@@ -59,6 +59,7 @@ def instrument(path: Path) -> None:
             return
         event = {
             "sample": sample,
+            "fixtureId": registry.segments.get(sample),
             "stage": stage,
             "unixMs": time.time() * 1000,
             "durationMs": (time.perf_counter() - start) * 1000,
@@ -90,6 +91,7 @@ def instrument(path: Path) -> None:
             emit("stt_local", start)
 
     def enqueue(self, segment):
+        registry.segments[segment.utterance_id] = registry.active.get(segment.speaker)
         mark = SAMPLE.set(segment.utterance_id)
         try:
             result = original_enqueue(self, segment)
@@ -122,7 +124,8 @@ def instrument(path: Path) -> None:
             cause = exc.__cause__
             error = (
                 "http_" + str(cause.response.status_code)
-                if hasattr(cause, "response") else "inference_error"
+                if hasattr(cause, "response")
+                else "inference_error"
             )
             raise
         except asyncio.CancelledError:
@@ -155,6 +158,7 @@ def instrument(path: Path) -> None:
 
     def initialize(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
+        registry.pipelines[self.segmenter.speaker] = self
         recognizer = self.recognizer
 
         class ScopedRecognizer:
@@ -164,7 +168,24 @@ def instrument(path: Path) -> None:
                 sample = self._benchmark_samples.pop(wav, None)
                 mark = SAMPLE.set(sample)
                 try:
-                    return await recognizer.transcribe(wav, language)
+                    result = await recognizer.transcribe(wav, language)
+                    fixture = registry.segments.get(sample)
+                    if fixture is not None:
+                        with path.with_name("synthetic-transcripts.jsonl").open(
+                            "a", encoding="utf8"
+                        ) as handle:
+                            handle.write(
+                                json.dumps(
+                                    {
+                                        "sample": sample,
+                                        "fixtureId": fixture,
+                                        "language": language,
+                                        "text": result.text,
+                                    }
+                                )
+                                + "\n"
+                            )
+                    return result
                 finally:
                     SAMPLE.reset(mark)
 
@@ -198,6 +219,68 @@ def instrument(path: Path) -> None:
     TranslationPipeline._publish = publish
 
 
+class FixtureRegistry:
+    """Explicit fixture boundaries, never timestamp or text-similarity matching."""
+
+    def __init__(self):
+        self.active = {}
+        self.segments = {}
+        self.pipelines = {}
+
+    def command(self, payload):
+        speaker = payload.get("speaker")
+        if speaker not in {"human:owner", "human:guest"}:
+            raise ValueError("invalid speaker")
+        pipeline = self.pipelines.get(speaker)
+        if pipeline is None or not pipeline.running:
+            raise ValueError("microphone_unavailable")
+        if pipeline.segmenter.frames:
+            raise ValueError("boundary_busy")
+        if payload.get("action") == "begin":
+            fixture = payload.get("fixtureId")
+            if not isinstance(fixture, str) or not fixture.startswith(("vi-", "ru-")):
+                raise ValueError("invalid synthetic fixture")
+            if speaker in self.active:
+                raise ValueError("fixture already active")
+            self.active[speaker] = fixture
+        elif payload.get("action") == "end":
+            if self.active.get(speaker) != payload.get("fixtureId"):
+                raise ValueError("fixture mismatch")
+            self.active.pop(speaker)
+        else:
+            raise ValueError("invalid action")
+
+
+async def benchmark(args):
+    registry = FixtureRegistry()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.with_name("synthetic-transcripts.jsonl").touch(exist_ok=False)
+    instrument(args.output, registry)
+
+    async def control(reader, writer):
+        try:
+            payload = json.loads(await asyncio.wait_for(reader.readline(), 2))
+            registry.command(payload)
+            result = {"ok": True}
+        except (ValueError, TimeoutError) as exc:
+            code = str(exc)
+            result = {
+                "ok": False,
+                "code": code
+                if code in {"microphone_unavailable", "boundary_busy"}
+                else "control_rejected",
+            }
+        writer.write((json.dumps(result) + "\n").encode())
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async with await asyncio.start_server(control, "127.0.0.1", 0, limit=4096) as server:
+        port = server.sockets[0].getsockname()[1]
+        args.output.with_suffix(".control").write_text(str(port))
+        await serve_room(args.room, Settings.from_env())
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--room", required=True)
@@ -209,8 +292,9 @@ def main():
             key, value = line.split("=", 1)
             if key.startswith(("NASTYA_", "LIVEKIT_")):
                 os.environ.setdefault(key, value)
-    instrument(args.output)
-    asyncio.run(serve_room(args.room, Settings.from_env()))
+    if args.output.exists():
+        raise ValueError("use a fresh benchmark output directory")
+    asyncio.run(benchmark(args))
 
 
 if __name__ == "__main__":

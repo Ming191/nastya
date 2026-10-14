@@ -5,6 +5,7 @@ import io
 import os
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from nastya_worker.providers.types import Transcript
 
 DLL_HANDLES = []
 MODEL_LOCK = threading.Lock()
+MODEL_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="nastya-gpu")
 
 
 @lru_cache(maxsize=1)
@@ -64,7 +66,7 @@ def load_model(name: str, directory: str, compute_type: str = "float16"):
 class LocalSpeechRecognizer:
     def __init__(self, model="turbo", directory="models", compute_type="float16"):
         self._model = load_model(model, directory, compute_type)
-        self._lock = asyncio.Lock()
+        self._inflight: asyncio.Future | None = None
 
     async def transcribe(self, wav: bytes, language: str) -> Transcript:
         _check_language(language)
@@ -73,11 +75,13 @@ class LocalSpeechRecognizer:
 
         cancelled = threading.Event()
 
+        if not MODEL_LOCK.acquire(blocking=False):
+            raise InferenceError("local STT busy")
+
         def recognize():
-            with MODEL_LOCK:
-                if cancelled.is_set():
-                    raise InferenceError("local STT cancelled")
-                return run_model()
+            if cancelled.is_set():
+                raise InferenceError("local STT cancelled")
+            return run_model()
 
         def run_model():
             try:
@@ -99,16 +103,28 @@ class LocalSpeechRecognizer:
             except (RuntimeError, ValueError, OSError) as exc:
                 raise InferenceError("local STT inference failed") from exc
 
-        # The underlying CUDA call cannot be interrupted safely. Keep ownership
-        # of the model until it finishes, even if the caller expires or leaves.
-        async with self._lock:
-            task = asyncio.create_task(asyncio.to_thread(recognize))
-            try:
-                return await asyncio.shield(task)
-            except asyncio.CancelledError:
-                cancelled.set()
-                try:
-                    await task
-                except Exception:
-                    pass
-                raise
+        # CUDA retains global ownership until the native call exits. A cancelled
+        # speaker returns immediately; new GPU work is rejected rather than queued.
+        try:
+            native_future = MODEL_EXECUTOR.submit(recognize)
+        except Exception:
+            MODEL_LOCK.release()
+            raise
+        # Ownership belongs to the native future, including shutdown/cancellation
+        # before it starts; it does not depend on the speaker's event loop.
+        native_future.add_done_callback(lambda _: MODEL_LOCK.release())
+        task = asyncio.wrap_future(native_future)
+        self._inflight = task
+
+        def completed(done):
+            if self._inflight is done:
+                self._inflight = None
+            if not done.cancelled():
+                done.exception()  # Consume errors from abandoned native work.
+
+        task.add_done_callback(completed)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise

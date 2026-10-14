@@ -2,11 +2,12 @@ import { chromium, expect, type Page } from "@playwright/test";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { resolve, join } from "node:path";
+import { createConnection } from "node:net";
 
 type Fixture = { id: string; language: "vi" | "ru"; source: string; reference: string;
   audioPath: string; condition: string };
 type Caption = { index: number; final: boolean; text: string; language: string | null;
-  atUnixMs: number };
+  atUnixMs: number; utteranceId: string | null };
 const [origin, corpusPath, output, profile = "baseline"] = process.argv.slice(2);
 if (!origin || new URL(origin).protocol !== "https:" || !corpusPath || !output ||
     !process.env.NASTYA_CAPTION_SMOKE_WORKER_ENV) throw new Error("Missing benchmark arguments");
@@ -28,7 +29,7 @@ async function prepare(page: Page) {
       stream.addTrack(destination.stream.getAudioTracks()[0].clone());
       return stream;
     };
-    const events: Array<{ index: number; final: boolean; text: string; language: string | null; atUnixMs: number }> = [];
+    const events: Array<{ index: number; final: boolean; text: string; language: string | null; atUnixMs: number; utteranceId: string | null }> = [];
     const states = new WeakMap<Element, string>();
     const indexes = new WeakMap<Element, number>();
     let serial = 0;
@@ -77,7 +78,14 @@ async function prepare(page: Page) {
           if (states.get(entry) === state) continue;
           states.set(entry, state);
           if (!indexes.has(entry)) indexes.set(entry, serial++);
+          // Read the exact React list key already derived from the protocol ID.
+          // No content/timestamp matching, and no web deployment is required.
+          const fiberProperty = Object.keys(entry).find(k => k.startsWith("__reactFiber$"));
+          const fiber = fiberProperty ? (entry as unknown as Record<string, { key?: string }>)[fiberProperty] : null;
+          const key = fiber?.key ?? "";
+          const match = /^human:(owner|guest):(human:(?:owner|guest):\d+:\d+)$/.exec(key);
           events.push({ index: indexes.get(entry)!, final, text,
+            utteranceId: match?.[2] ?? null,
             language: entry.querySelector("p")?.getAttribute("lang") ?? null,
             atUnixMs: performance.timeOrigin + performance.now() });
         }
@@ -101,6 +109,8 @@ async function main() {
   await mkdir(output, { recursive: true });
   const fixtures: Fixture[] = JSON.parse(await readFile(corpusPath, "utf8"));
   const report = { source: "synthetic", profile, startedAt: new Date().toISOString(),
+    correlationVersion: 2,
+    correlationMethod: "Explicit localhost begin/end fixture control at drained VAD boundaries; segment utteranceId from worker, exact protocol ID from React DOM list key; WER uses separate synthetic STT output, never lossy partial captions.",
     clockMethod: "Same Windows host for source and receiver. AudioContext schedule is mapped to browser performance wall clock and checked against source onended; callback discrepancy plus 3ms is recorded per case. Latency is unavailable above a 50ms check threshold. Endpoint is DOM mutation, not optical paint detection. These are synthetic capture-to-DOM estimates, not human or cross-device acceptance.",
     samples: [] as unknown[], errors: [] as string[], gpuSamples: [] as unknown[], workerWarnings: [] as string[],
     gpuScope: "Whole GPU, includes other applications; not process VRAM" };
@@ -159,123 +169,97 @@ async function main() {
     }
     await new Promise(done => setTimeout(done, 3500));
     gpuSample("worker_ready");
-    if (profile.includes("pressure")) {
-      const jobs: Array<{ fixture: Fixture; timing: Record<string, unknown>; source: Page }> = [];
-      for (let pair = 0; pair < 6; pair++) {
-        const started = Date.now();
-        for (const language of ["vi", "ru"] as const) {
-          const fixture = fixtures.find(f => f.id === `${language}-${pair}`)!;
-          const source = language === "vi" ? owner : guest;
-          const encoded = (await readFile(fixture.audioPath)).toString("base64");
-          const timing = await source.evaluate(encoded =>
-            (window as unknown as { __playFixture: (s: string, n: boolean) => Promise<Record<string, unknown>> }).__playFixture(encoded, false), encoded);
-          jobs.push({ fixture, timing, source });
-        }
-        await new Promise(done => setTimeout(done, Math.max(0, 4500 - (Date.now() - started))));
-        gpuSample("pressure_pair_" + pair);
-      }
-      await new Promise(done => setTimeout(done, 14000));
-      const workerEvents = (await readFile(join(output, "worker-events.jsonl"), "utf8")).trim().split("\n")
-        .map(line => JSON.parse(line) as { sample: string; stage: string; unixMs: number });
-      const normalize = (text: string) => text.toLowerCase().replace(/chín|девять/g, "9")
-        .replace(/ba|три/g, "3").replace(/hai|две|два/g, "2").replace(/năm|пять/g, "5")
-        .replace(/ё/g, "е").replace(/[^\p{L}\p{N}]/gu, "");
-      const distance = (a: string, b: string) => {
-        let row = Array.from({ length: b.length + 1 }, (_, i) => i);
-        for (let i = 1; i <= a.length; i++) {
-          const next = [i];
-          for (let j = 1; j <= b.length; j++) next.push(Math.min(next[j - 1] + 1, row[j] + 1, row[j - 1] + Number(a[i - 1] !== b[j - 1])));
-          row = next;
-        }
-        return row[b.length];
-      };
-      for (const language of ["vi", "ru"] as const) {
-        const target = language === "vi" ? guest : owner;
-        const received = await events(target);
-        const groups = new Map<number, Caption[]>();
-        for (const event of received) groups.set(event.index, [...(groups.get(event.index) ?? []), event]);
-        const matches = new Map<string, Caption[]>();
-        const role = language === "vi" ? "human:owner:" : "human:guest:";
-        for (const group of groups.values()) {
-          const partial = group.find(e => !e.final);
-          if (!partial) continue;
-          // Correlate private synthetic fixtures through metadata timestamps,
-          // preserving multiple VAD fragments belonging to the same sentence.
-          const publication = workerEvents.filter(e => e.stage === "partial_publish" && e.sample.startsWith(role))
-            .map(e => ({ event: e, delay: partial.atUnixMs - e.unixMs }))
-            .filter(e => e.delay >= -20 && e.delay < 1500).sort((a, b) => a.delay - b.delay)[0];
-          const enqueued = publication && workerEvents.find(e => e.stage === "enqueued" && e.sample === publication.event.sample);
-          const job = enqueued && jobs.find(j => j.fixture.language === language &&
-            Number(j.timing.startUnixMs) <= enqueued.unixMs && enqueued.unixMs <= Number(j.timing.speechEndUnixMs) + 1500);
-          if (job) {
-            matches.set(job.fixture.id, [...(matches.get(job.fixture.id) ?? []), ...group]);
-            continue;
-          }
-          const choices = jobs.filter(j => j.fixture.language === language).map(j => ({ id: j.fixture.id,
-            error: distance(normalize(j.fixture.source), normalize(partial.text)) / Math.max(1, normalize(j.fixture.source).length) })).sort((a, b) => a.error - b.error);
-          if (choices[0].error < 0.4) matches.set(choices[0].id, [...(matches.get(choices[0].id) ?? []), ...group]);
-        }
-        for (const job of jobs.filter(j => j.fixture.language === language)) {
-          const group = matches.get(job.fixture.id) ?? [];
-          const partials = group.filter(e => !e.final);
-          const finals = group.filter(e => e.final);
-          const final = finals.at(-1);
-          const clockErrorBoundMs = await job.source.evaluate(index =>
-            (window as unknown as { __benchmarkClocks: Array<{ errorMs: number | null }> }).__benchmarkClocks[index].errorMs, Number(job.timing.clockIndex));
-          report.samples.push({ id: job.fixture.id, condition: "sustained_overlap",
-            direction: language === "vi" ? "vi-ru" : "ru-vi", sourceReference: job.fixture.source,
-            reference: job.fixture.reference, recognizedText: partials.map(e => e.text).join(" "), translatedText: finals.map(e => e.text).join(" "),
-            ...job.timing, clockErrorBoundMs, finalUnixMs: final?.atUnixMs ?? null,
-            speechEndToFinalMs: final && clockErrorBoundMs !== null && clockErrorBoundMs <= 50 ? final.atUnixMs - Number(job.timing.speechEndUnixMs) : null,
-            success: !!final && final.language === (language === "vi" ? "ru" : "vi"), finalLanguage: final?.language ?? null });
-        }
-      }
-      console.log("pressure: completed 12 simultaneous utterances at 4.5-second cadence");
-      return;
+    const controlPort = Number(await readFile(join(output, "worker-events.control"), "utf8"));
+    async function command(fixture: Fixture, action: "begin" | "end") {
+      await new Promise<void>((done, fail) => {
+        const socket = createConnection({ host: "127.0.0.1", port: controlPort });
+        let data = "";
+        socket.setTimeout(2500, () => { socket.destroy(); fail(new Error("Fixture control timeout")); });
+        socket.on("error", fail);
+        socket.on("connect", () => socket.write(JSON.stringify({ action, fixtureId: fixture.id,
+          speaker: fixture.language === "vi" ? "human:owner" : "human:guest" }) + "\n"));
+        socket.on("data", chunk => {
+          data += chunk.toString();
+          if (data.includes("\n")) { socket.end(); const reply = JSON.parse(data); reply.ok ? done() : fail(new Error("fixture_control:" + action + ":" + reply.code)); }
+        });
+      });
     }
-    async function run(fixture: Fixture) {
+    async function control(fixture: Fixture, action: "begin" | "end") {
+      const deadline = Date.now() + 5000;
+      while (true) {
+        try { await command(fixture, action); return; }
+        catch (error) {
+          if (!(error instanceof Error) || error.message !== "fixture_control:" + action + ":boundary_busy" || Date.now() >= deadline) throw error;
+          await new Promise(done => setTimeout(done, 100));
+        }
+      }
+    }
+    const jobs: Array<{ fixture: Fixture; timing: Record<string, unknown>; source: Page }> = [];
+    async function play(fixture: Fixture) {
+      await control(fixture, "begin");
       const source = fixture.language === "vi" ? owner : guest;
-      const target = fixture.language === "vi" ? guest : owner;
-      const before = (await events(target)).length;
       const encoded = (await readFile(fixture.audioPath)).toString("base64");
       const timing = await source.evaluate(({ encoded, noise }) =>
         (window as unknown as { __playFixture: (s: string, n: boolean) => Promise<Record<string, unknown>> }).__playFixture(encoded, noise),
         { encoded, noise: fixture.condition === "noise" });
-      const end = Number(timing.speechEndUnixMs);
-      const deadline = Date.now() + Number(timing.durationMs) + 20000;
-      let recent: Caption[] = [];
-      while (Date.now() < deadline) {
-        recent = (await events(target)).slice(before);
-        if (recent.some(e => e.final && e.atUnixMs >= end - 100)) break;
-        await new Promise(done => setTimeout(done, 100));
-      }
-      // Allow final corrections belonging to this fixed, isolated fixture.
-      await new Promise(done => setTimeout(done, 450));
-      recent = (await events(target)).slice(before);
-      const finals = recent.filter(e => e.final);
-      const partials = recent.filter(e => !e.final);
-      const final = finals.at(-1);
-      const clockErrorBoundMs = await source.evaluate((index) =>
-        (window as unknown as { __benchmarkClocks: Array<{ errorMs: number | null }> }).__benchmarkClocks[index].errorMs,
-        Number(timing.clockIndex));
-      const result = { id: fixture.id, direction: fixture.language === "vi" ? "vi-ru" : "ru-vi", condition: fixture.condition,
-        reference: fixture.reference, sourceReference: fixture.source,
-        recognizedText: partials.map(e => e.text).join(" "), translatedText: finals.map(e => e.text).join(" "),
-        ...timing, finalUnixMs: final?.atUnixMs ?? null,
-        clockErrorBoundMs,
-        speechEndToFinalMs: final && clockErrorBoundMs !== null && clockErrorBoundMs <= 50 ? final.atUnixMs - end : null,
-        captionCount: finals.length, success: !!final && final.language === (fixture.language === "vi" ? "ru" : "vi"),
-        finalLanguage: final?.language ?? null };
-      report.samples.push(result);
+      jobs.push({ fixture, timing, source });
+      // Explicitly close only after playback + VAD quiet tail. A non-drained
+      // boundary aborts measurement; it is never assigned by text similarity.
+      await new Promise(done => setTimeout(done, Number(timing.durationMs) + 1000));
+      await control(fixture, "end");
       gpuSample(fixture.id);
-      console.log(`${profile} ${fixture.id}: ${result.speechEndToFinalMs !== null ? Math.round(result.speechEndToFinalMs) + " ms" : "latency unavailable"}`);
-      await writeFile(join(output, "browser-results.json"), JSON.stringify(report, null, 2));
-      await new Promise(done => setTimeout(done, 1200));
     }
-    for (const fixture of fixtures.filter(f => f.condition !== "simultaneous")) await run(fixture);
-    await Promise.all(fixtures.filter(f => f.condition === "simultaneous").map(run));
-  } catch {
-    report.errors.push("Benchmark failed; no credentials or upstream content logged");
+    if (profile.includes("pressure")) {
+      for (let pair = 0; pair < 6; pair++) {
+        const started = Date.now();
+        await Promise.all((["vi", "ru"] as const).map(language =>
+          play(fixtures.find(f => f.id === `${language}-${pair}`)!)));
+        await new Promise(done => setTimeout(done, Math.max(0, 4500 - (Date.now() - started))));
+      }
+    } else {
+      for (const fixture of fixtures.filter(f => f.condition !== "simultaneous")) {
+        await play(fixture);
+        await new Promise(done => setTimeout(done, 3200));
+      }
+      await Promise.all(fixtures.filter(f => f.condition === "simultaneous").map(play));
+    }
+    await new Promise(done => setTimeout(done, 12000));
+    const workerEvents = (await readFile(join(output, "worker-events.jsonl"), "utf8")).trim().split("\n")
+      .filter(Boolean).map(line => JSON.parse(line) as { sample: string; fixtureId: string | null; stage: string; unixMs: number });
+    const transcripts = (await readFile(join(output, "synthetic-transcripts.jsonl"), "utf8")).trim().split("\n")
+      .filter(Boolean).map(line => JSON.parse(line) as { sample: string; fixtureId: string; text: string });
+    const received = { vi: await events(guest), ru: await events(owner) };
+    for (const job of jobs) {
+      const { fixture, timing } = job;
+      const ids = workerEvents.filter(e => e.fixtureId === fixture.id && e.stage === "enqueued").map(e => e.sample);
+      const uniqueIds = [...new Set(ids)];
+      const stt = uniqueIds.map(id => transcripts.filter(t => t.sample === id && t.fixtureId === fixture.id));
+      const finals = uniqueIds.map(id => received[fixture.language].filter(e => e.final && e.utteranceId === id));
+      const selected = finals.map(group => group.at(-1));
+      const mapped = uniqueIds.length > 0 && stt.every(group => group.length === 1);
+      const delivered = mapped && selected.every(Boolean);
+      const finalUnixMs = delivered ? Math.max(...selected.map(e => e!.atUnixMs)) : null;
+      const targetLanguage = fixture.language === "vi" ? "ru" : "vi";
+      const clockErrorBoundMs = await job.source.evaluate(index =>
+        (window as unknown as { __benchmarkClocks: Array<{ errorMs: number | null }> }).__benchmarkClocks[index].errorMs, Number(timing.clockIndex));
+      const result = { id: fixture.id, direction: fixture.language === "vi" ? "vi-ru" : "ru-vi", condition: fixture.condition,
+        reference: fixture.reference, sourceReference: fixture.source, segmentIds: uniqueIds,
+        provenanceValid: mapped, recognizedText: mapped ? stt.map(group => group[0].text).join(" ") : null,
+        translatedText: delivered ? selected.map(e => e!.text).join(" ") : null,
+        ...timing, finalUnixMs, clockErrorBoundMs,
+        speechEndToFinalMs: finalUnixMs !== null && clockErrorBoundMs !== null && clockErrorBoundMs <= 50 && finalUnixMs >= Number(timing.speechEndUnixMs)
+          ? finalUnixMs - Number(timing.speechEndUnixMs) : null,
+        captionCount: selected.filter(Boolean).length,
+        success: delivered && selected.every(e => e!.language === targetLanguage),
+        finalLanguage: delivered && selected.every(e => e!.language === targetLanguage) ? targetLanguage : null,
+        missingSegmentFinals: selected.filter(e => !e).length,
+        uncorrelatedDomEvents: received[fixture.language].filter(e => !e.utteranceId).length };
+      report.samples.push(result);
+      console.log(`${profile} ${fixture.id}: ${result.speechEndToFinalMs === null ? "unavailable" : Math.round(result.speechEndToFinalMs) + " ms"}; segments=${uniqueIds.length}; provenance=${mapped}; translated=${result.success}`);
+    }
+  } catch (error) {
+    const code = error instanceof Error && /^fixture_control:(begin|end):(boundary_busy|microphone_unavailable|control_rejected)$/.test(error.message) ? error.message : "benchmark_failed";
+    report.errors.push(code);
     process.exitCode = 1;
   } finally {
     await browser.close();
