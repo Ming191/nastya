@@ -13,6 +13,7 @@ from nastya_worker.translation_comparison import capture_response, compare, mode
 def test_chat_comparison_uses_same_120_sources_and_isolates_paired_metadata(tmp_path):
     _, rows = load_corpus()
     seen = []
+    russian = {r["source_text"] for r in rows if r["source_language"] == "ru"}
 
     async def respond(request):
         body = json.loads(request.content)
@@ -20,13 +21,16 @@ def test_chat_comparison_uses_same_120_sources_and_isolates_paired_metadata(tmp_
         assert body["response_format"] == {"type": "json_object"}
         assert len(body["messages"]) == 2
         seen.append((body["model"], body["messages"][1]["content"]))
+        tokens = (17 if body["model"] == "small" else 29) + (
+            body["messages"][1]["content"] in russian
+        )
         await asyncio.sleep(0)
         return httpx.Response(
             200,
             json={
                 "model": body["model"],
                 "usage": {
-                    "total_tokens": 17 if body["model"] == "small" else 29,
+                    "total_tokens": tokens,
                     "prompt_time": 0.01,
                 },
                 "choices": [
@@ -61,7 +65,15 @@ def test_chat_comparison_uses_same_120_sources_and_isolates_paired_metadata(tmp_
         assert {text for name, text in seen if name == model} == {r["source_text"] for r in rows}
         result = report["results"][model]
         assert result["scheduled"] == result["succeeded"] == 120
-        assert result["tokens"]["total_tokens"] == {"measured": 120, "total": 120 * token_count}
+        assert result["tokens"]["total_tokens"] == {
+            "measured": 120,
+            "total": 120 * token_count + 60,
+        }
+        for language, expected in (("vi", token_count), ("ru", token_count + 1)):
+            assert result["by_direction"][language]["tokens"]["total_tokens"] == {
+                "measured": 60,
+                "total": 60 * expected,
+            }
         assert result["reported_model_counts"] == {model: 120}
         assert result["by_direction"]["ru"]["succeeded"] == 60
         assert result["by_direction"]["vi"]["response_ms"]["n"] == 60
