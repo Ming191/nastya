@@ -186,6 +186,23 @@ Replace the control file with predictions from a hosted model: one JSON object p
 
 The benchmark tools call hosted model endpoints. They do **not** download or run models locally. Set `NASTYA_MT_URL` and optional `NASTYA_MT_API_KEY` for translation; `NASTYA_STT_URL` and optional `NASTYA_STT_API_KEY` for speech recognition. The API contracts are the same as the worker providers above.
 
+For an opt-in synthetic-only STT/VAD comparison, install the `local-stt` extra
+for offline Silero VAD and provide the same WAV manifest described below:
+
+```powershell
+python -m nastya_worker.speech_comparison --manifest E:/fixtures/manifest.json --output E:/reports/stt-run --env-file .env.local
+```
+
+Run from `services/ai-worker`, use a fresh output directory, and keep the env file
+private. The command alternates two distinct Whisper model IDs and spaces requests
+by at least 3.25 seconds. Add `--two-speakers` for paired VI/RU requests, or
+`--local-int8` for cached CUDA Turbo recognition (requires `cuda-windows` on
+Windows). These modes are separate. Synthetic transcripts are saved only to the
+scoring output directory; never supply private calls. Reports distinguish response
+time from account pacing, raw WER from number-normalized diagnostics, and offline
+VAD computation from streaming/end-to-end latency. There is no first-partial
+measurement for a batch transcription endpoint.
+
 To run an apples-to-apples comparison on the 120-sentence synthetic RU/VI dataset:
 
 ```bash
