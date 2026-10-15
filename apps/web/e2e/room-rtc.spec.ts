@@ -87,12 +87,21 @@ test("reload closes old media session and allows a fresh guest rejoin", async ({
 test("invalid or forged invitation cannot join a room", async ({ browser }) => {
   const pair = await createCallPair(browser);
   try {
-    await pair.guest.goto("/call/" + pair.roomId + "#invite=invalid");
-    await pair.guest.getByRole("checkbox", { name: /I understand that camera\/microphone media/ }).check();
-    await pair.guest.getByRole("button", { name: "Join video call" }).click();
-    await expect(pair.guest.getByText("This invitation is invalid.", { exact: false }))
+    // A fresh tab has never loaded the valid guest capability. Navigating only
+    // the hash in the existing guest tab can reuse its saved invitation.
+    const untrusted = await pair.guestContext.newPage();
+    await untrusted.goto("/call/" + pair.roomId + "#invite=invalid");
+    await untrusted.getByRole("checkbox", { name: /I understand that camera\/microphone media/ }).check();
+    const rejection = untrusted.waitForResponse((response) =>
+      response.url().endsWith("/api/rooms/join") && response.request().method() === "POST");
+    await untrusted.getByRole("button", { name: "Join video call" }).click();
+    const response = await rejection;
+    expect(response.request().postDataJSON().invite === "invalid").toBe(true);
+    expect(response.status()).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: "INVALID_INVITE" } });
+    await expect(untrusted.getByText("This invitation is invalid.", { exact: false }))
       .toBeVisible();
-    await expect(pair.guest.getByRole("heading", { name: "Video call", exact: true }))
+    await expect(untrusted.getByRole("heading", { name: "Video call", exact: true }))
       .toHaveCount(0);
   } finally {
     await pair.close();
