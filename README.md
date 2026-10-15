@@ -214,6 +214,29 @@ python -m nastya_worker.benchmark_remote mt \
 
 Model IDs are passed to your server; **the remote service must actually host and select each model**. Outputs include model-specific predictions and a JSON report of coverage, response latency (p50/p95), concurrency and measured HTTP throughput. Automatic text overlap is **not** a substitute for independent bilingual review. There is no automatic server/GPU memory measurement or first streaming partial measurement.
 
+For the worker's OpenAI-compatible chat translation adapter, configure
+`NASTYA_MT_PROVIDER=chat`, `NASTYA_MT_URL`, `NASTYA_MT_API_KEY` and
+`NASTYA_MT_MODEL` in a private environment file, then run from `services/ai-worker`:
+
+```powershell
+python -m nastya_worker.translation_comparison --env-file .env.local --output E:/reports/mt-serial --model qwen/qwen3.8-27b=none --model openai/gpt-oss-20b=low --model openai/gpt-oss-120b=low --interval 1.1
+```
+
+Use model IDs enabled for your account. Each `--model` specifies its reasoning
+effort (`none`, `low`, `medium`, `high` or `default`); providers support different
+values. Run again with a new output directory and `--concurrency 2` to send RU/VI
+pairs. Global pacing scales with the pair size; choose `--interval` according to
+your account quotas. Failed requests are retained without automatic retries.
+The fixed 120-row synthetic corpus is used in both runs. Source text, generated
+translations and result files must remain outside the repository. No call
+recordings are used. Reports include sample counts, median/mean/p95, separate
+pacing waits, allowlisted provider token/timing metadata and null human/GPU scores.
+Provider-reported model IDs do not independently attest deployed weights.
+Generate independent reviewer forms with `evaluate review-template` against each
+model's `*-predictions.jsonl`, then use `evaluate score --reviews` after completing
+the rubric. Never treat text overlap as semantic quality or quota-paced throughput
+as provider capacity.
+
 STT requires a separate **operator-supplied** JSON audio manifest and local PCM WAV fixtures with permission to use the recordings. The versioned RU/VI text corpus does not contain audio. The manifest schema is:
 
 ```json
